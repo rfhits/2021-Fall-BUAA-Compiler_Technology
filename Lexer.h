@@ -11,7 +11,7 @@
 
 class Lexer {
 
-public:
+private:
     char ch_;
     char prev_char_ = -1;
     string str_token_; // while analyzing, read a token
@@ -26,6 +26,5 @@ public:
     void retract();
     void uncomment();
 };
-
 
 #endif //INC_2021_FALL_BUAA_COMPILER_TECHNOLOGY_LEXER_H
