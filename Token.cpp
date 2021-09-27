@@ -45,8 +45,9 @@ void Token::set_str_value(string &str_value) {
 string Token::to_string() {
     auto iter = type_code2str.find(type_code_);
     string s = iter->second;
-
-    return std::__cxx11::string();
+    s.push_back(' ');
+    s += str_value_;
+    return s;
 }
 
 

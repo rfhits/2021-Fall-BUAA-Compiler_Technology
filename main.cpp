@@ -17,7 +17,7 @@ int main() {
     while (true) {
         Token token = l.get_token();
         if (token.get_type_code() != TYPE_EOF) {
-            out << token.get_type_code() << " " << token.get_str_value() <<endl;
+            out << token.to_string() <<endl;
         } else {
             break;
         }
