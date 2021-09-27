@@ -50,9 +50,11 @@ void Lexer::pre_treat() {
 
     // Error treat, may illegal comment
     for (int i = 0; i<source.length(); ) {
-        if (source.at(i) != '/') {
-            // pass;
-            i += 1;
+        if (source[i] == '"') {
+            do {
+                i += 1;
+            } while(source[i] != '"');
+            i+=1;
         }
         else if (source[i] == '/' && source[i+1] == '/') {
             source[i] = source[i+1] = ' ';
