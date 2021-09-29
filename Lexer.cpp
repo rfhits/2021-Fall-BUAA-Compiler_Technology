@@ -76,9 +76,6 @@ void Lexer::retract() {
 }
 
 // put a word into Lexer::str_token_
-// if str_token_.type == comment, pass it, meaningless
-// if str_token_.type == INVALID_TYPE
-// if str_token_.type ==
 Token Lexer::get_token() {
     Token r_token(TypeCode::TYPE_UNDEFINED);
     if (pos_ == source_.length()) { // at the end
