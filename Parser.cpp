@@ -368,6 +368,35 @@ void Parser::UnaryOp() {
     }
 }
 
+// <ConstInitVal>::= '{' [ ConstInitVal { ',' ConstInitVal } ] '}' |
+//               <ConstExp>
+// promise: already read a token
+void Parser::ConstInitVal() {
+    if (type_code_ == TypeCode::LBRACE) {
+        next_sym();
+        if (type_code_ == TypeCode::RBRACE) {
+            // end
+        } else {
+            ConstInitVal();
+            next_sym();
+            while (type_code_ == TypeCode::COMMA) {
+                next_sym();
+                ConstInitVal();
+                next_sym();
+            }
+            if (type_code_ == TypeCode::RBRACE) {
+                // end
+            } else {
+                handle_error("expect '}' at end of <ConstInitVal>");
+            }
+        }
+    } else {
+        ConstExp();
+    }
+    output("<ConstInitVal>");
+}
+
+
 // <VarDecl>::= BType VarDef { ',' VarDef } ';'
 // promise: already read a token
 void Parser::VarDecl() {
@@ -380,23 +409,114 @@ void Parser::VarDecl() {
             VarDef();
             next_sym();
         }
+        if (type_code_ == TypeCode::SEMICN) {
+            output("<VarDecl");
+        } else {
+            handle_error("expect ';' at end of <VarDef>");
+        }
     } else {
         handle_error("expect int in VarDecl begin");
     }
 }
 
+// <VarDef>::= Ident { '[' ConstExp ']' } |
+//             Ident { '[' ConstExp ']' } '=' InitVal
+// promise: already read a token
 void Parser::VarDef() {
-
+    if (type_code_ == TypeCode::IDENFR) {
+        next_sym();
+        while (type_code_ == TypeCode::LBRACK) {
+            next_sym();
+            ConstExp();
+            next_sym();
+            if (type_code_ == TypeCode::RBRACK) {
+                next_sym();
+            } else {
+                handle_error("expect ] at end of <VarDef>");
+            }
+        }
+        // ['=' InitVal]
+        if (type_code_ == TypeCode::ASSIGN) {
+            next_sym();
+            InitVal();
+        } else {
+            // done
+            retract();
+        }
+        output("<VarDef>");
+    } else {
+        handle_error("expect identifier at begin of <VarDef>");
+    }
 }
 
+// <InitVal>::= '{' [ InitVal { ',' InitVal } ] '}'
+//              Exp |
+// promise: already read a token
 void Parser::InitVal() {
-
+    if (type_code_ == TypeCode::LBRACE) {
+        next_sym();
+        if ( type_code_ == TypeCode::RBRACE) {
+            // end
+        } else {
+            InitVal();
+            next_sym();
+            while (type_code_ == TypeCode::COMMA) {
+                next_sym();
+                InitVal();
+                next_sym();
+            }
+            // get '}' then end
+            if (type_code_ == TypeCode::RBRACE) {
+                // end
+            } else {
+                handle_error("expect '}' at end of <InitVal>");
+            }
+        }
+    } else {
+        Exp();
+    }
+    output("<InitVal>");
 }
 
-
+// <FuncDef>::= FuncType Ident '(' [FuncFParams] ')' Block
+// promise: already read a token
 void Parser::FuncDef() {
-
+    FuncType();
+    next_sym();
+    if (type_code_ == TypeCode::IDENFR) {
+        next_sym(); // '('
+        next_sym(); // ')' or 'int'
+        if (type_code_ == TypeCode::RPARENT) {
+            // go to Block
+        } else {
+            FuncFParams();
+            next_sym();
+            if (type_code_ == TypeCode::RPARENT) {
+                // go to Block
+            } else {
+                handle_error("expect ')' in <FuncDef>");
+            }
+        }
+        next_sym();
+        Block();
+    } else {
+        handle_error("expect Identifier in <FuncDef>");
+    }
+    output("<FuncDef>");
 }
+
+// <FuncType>::= 'int' | 'void'
+void Parser::FuncType() {
+    if (type_code_ == TypeCode::VOIDTK) {
+        // pass
+    } else if (type_code_ == TypeCode::INTTK) {
+        // pass
+    } else{
+        handle_error("FuncType must be int of void");
+    }
+    output("<FuncType>");
+}
+
 
 // <FuncFParams>::= <FuncFParam> {',' FuncFParam}
 // promise:
@@ -452,14 +572,164 @@ void Parser::FuncFParam() {
     }
 }
 
+// <Block>::= '{' { BlockItem } '}'
 void Parser::Block() {
-
+    if (type_code_ == TypeCode::LBRACE) {
+        next_sym();
+        // from back to begin
+        while (type_code_ != TypeCode::RBRACE) {
+            BlockItem(); // already read in
+            next_sym();
+        }
+        // read '}'
+        // end
+    } else {
+        handle_error("<Block> begin with '{'");
+    }
+    output("<Block>");
 }
 
+//
 void Parser::BlockItem() {
+    if (type_code_ == TypeCode::CONSTTK ||
+        type_code_ == TypeCode::INTTK) {
+        Decl();
+    } else {
+        // in usual, we should judge
+        Stmt();
+    }
+}
+
+//
+void Parser::Stmt() {
+    if (type_code_ == TypeCode::LBRACE) {
+        Block();
+    } else if (type_code_ == TypeCode::IFTK) {
+        IfStmt();
+    } else if (type_code_ == TypeCode::WHILETK) {
+        WhileStmt();
+    } else if (type_code_ == TypeCode::BREAKTK ||
+               type_code_ == TypeCode::CONTINUETK) {
+        next_sym();
+        if (type_code_ == TypeCode::SEMICN) {
+            // end
+        } else {
+            handle_error("expect ';' behind break | continue");
+        }
+    } else if (type_code_ == TypeCode::RETURNTK) {
+        ReturnStmt();
+    } else if (type_code_ == TypeCode::PRINTFTK) {
+        WriteStmt();
+    } else if (type_code_ == TypeCode::SEMICN) {
+        // empty stmt
+        // end
+    } else {
+        // assign stmt, exp stmt, read stmt
+        // read till ';'
+        bool read_assign = false, read_getint = false;
+        int read_times = 0;
+        while (type_code_ != TypeCode::SEMICN) {
+            next_sym();
+            if (type_code_ == TypeCode::ASSIGN) read_assign = true;
+            if (type_code_ == TypeCode::GETINTTK) read_getint = true;
+            read_times += 1;
+        }
+        while (read_times != 0) {
+            retract();
+            read_times -= 1;
+        }
+        if (read_assign && read_getint) {
+            ReadStmt();
+        } else if (read_assign && (!read_getint)) {
+            AssignStmt();
+        } else if ((!read_assign)&&(!read_getint)) {
+            Exp();
+            next_sym();
+            if (type_code_ == TypeCode::SEMICN) {
+                // end
+            } else {
+                handle_error("expect ';' end of <stmt>");
+            }
+        }
+    }
+    output("<Stmt>");
+}
+
+void Parser::AssignStmt() {
+    LVal();
+    next_sym();
+    if (type_code_ == TypeCode::ASSIGN) {
+        next_sym();
+        Exp();
+    } else {
+        handle_error("expect '=' end of <AssignStmt>");
+    }
+}
+
+void Parser::IfStmt() {
+    if (type_code_== TypeCode::IFTK) {
+        next_sym();
+        if (type_code_ == TypeCode::LPARENT) {
+            next_sym();
+            Cond();
+            next_sym();
+            if (type_code_ == TypeCode::RPARENT) {
+                next_sym();
+                Stmt();
+                next_sym();
+                if (type_code_ == TypeCode::ELSETK) {
+                    next_sym();
+                    Stmt();
+                } else {
+                    retract();
+                }
+            } else {
+                handle_error("");
+            }
+        }
+    } else {
+        handle_error("");
+    }
+}
+
+// <Cond>::LOrExp
+void Parser::Cond() {
+    LOrExp();
+    output("<Cond>");
+}
+
+void Parser::LOrExp() {
 
 }
 
-void Parser::Stmt() {
+void Parser::LAndExp() {
+
+}
+
+void Parser::EqExp() {
+
+}
+
+void Parser::RelExp() {
+
+}
+
+void Parser::WhileStmt() {
+
+}
+
+void Parser::ReturnStmt() {
+
+}
+
+void Parser::ReadStmt() {
+
+}
+
+void Parser::WriteStmt() {
+
+}
+
+void Parser::MainFuncDef() {
 
 }

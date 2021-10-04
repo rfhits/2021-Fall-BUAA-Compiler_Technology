@@ -52,6 +52,7 @@ private:
 
 
     void FuncDef();
+    void FuncType();
     void FuncFParams();
     void FuncFParam();
     void Block();
@@ -65,7 +66,7 @@ private:
     void EqExp();
     void RelExp();
     void WhileStmt();
-    void RetStmt();
+    void ReturnStmt();
     void ReadStmt();
     void WriteStmt();
 
