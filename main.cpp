@@ -2,13 +2,14 @@
 #include <fstream>
 #include "ErrorHandler.h"
 #include "Lexer.h"
-
-using namespace std;
+#include "Parser.h"
 
 int main() {
     string testfile_path = "testfile.txt";
     string output_path = "output.txt";
     string error_out_path = "error.txt";
+    vector<string> output_str;
+
     ifstream in_stream(testfile_path);
     stringstream ss;
     ss << in_stream.rdbuf();
@@ -18,16 +19,12 @@ int main() {
 
     ErrorHandler error_handler(error_out);
 
-    Lexer l = Lexer(ss.str(), error_handler, true, out);
-    l.uncomment();
-    while (true) {
-        Token token = l.get_token();
-        if (token.get_type_code() != TYPE_EOF) {
-            continue;
-        } else {
-            break;
-        }
-    }
+    Lexer lexer(ss.str(), error_handler, true);
+    lexer.uncomment();
+
+    Parser parser(lexer, error_handler, true, output_str);
+    parser.Program();
+
     out.close();
     error_out.close();
     return 0;

@@ -17,13 +17,11 @@ private:
     string source_;
     int pos_ = 0; // in source_code[0]
     int line_no_ = 1; // now at this line
-    bool print_mode_ = false;
-    std::ofstream& out_;
     ErrorHandler& error_handler_;
 
 
 public:
-    explicit Lexer(string&& source, ErrorHandler& error_handler,bool print_mode, std::ofstream& out);
+    explicit Lexer(string&& source, ErrorHandler& error_handler);
     int get_char();
     Token get_token();
     void retract();

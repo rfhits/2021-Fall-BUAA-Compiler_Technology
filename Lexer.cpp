@@ -6,8 +6,8 @@
 #include "ErrorHandler.h"
 
 
-Lexer::Lexer(string &&source, ErrorHandler& error_handler,bool print_mode, std::ofstream& out):
-    source_(source), error_handler_(error_handler), print_mode_(print_mode), out_(out){
+Lexer::Lexer(string &&source, ErrorHandler& error_handler):
+    source_(source), error_handler_(error_handler) {
 }
 
 
@@ -215,10 +215,6 @@ Token Lexer::get_token() {
     }
     r_token.set_str_value(str_token_);
     r_token.set_type_code(type_code);
-    if (print_mode_) {
-        if (r_token.get_type_code() != TypeCode::TYPE_EOF) {
-            out_ << r_token.to_string() << endl;
-        }
-    }
+
     return r_token;
 }

@@ -118,6 +118,9 @@ public:
     string get_str_value();
     int get_int_value();
     string get_type_name();
+    int get_line_no() const {
+        return line_no_;
+    }
     void set_type_code(TypeCode type_code);
     void set_str_value(string& str_value);
     string to_string();
