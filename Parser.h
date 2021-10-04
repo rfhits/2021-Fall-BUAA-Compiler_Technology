@@ -26,7 +26,7 @@ private:
     void next_sym(); // put a token into read_tokens
     void retract();
 
-    void output(std::string str);
+    void output(const std::string& str);
     void handle_error(const std::string& msg);
 
 
@@ -34,20 +34,21 @@ private:
     void ConstDecl();
     void ConstDef();
     void ConstExp();
+    void AddExp();
+    void MulExp();
+    void UnaryExp();
+    void PrimaryExp();
+    void Exp();
+    void LVal();
+    void Number();
+    void IntConst();
+    void FuncRParams();
+    void UnaryOp();
     void ConstInitVal();
 
     void VarDecl();
     void VarDef();
     void InitVal();
-    void Exp();
-    void AddExp();
-    void MulExp();
-    void UnaryExp();
-    void UnaryOP();
-    void PrimaryExp();
-    void LVal();
-    void Number();
-    void IntConst();
 
 
     void FuncDef();
