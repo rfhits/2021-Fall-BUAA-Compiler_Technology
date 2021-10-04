@@ -19,7 +19,7 @@ int main() {
 
     ErrorHandler error_handler(error_out);
 
-    Lexer lexer(ss.str(), error_handler, true);
+    Lexer lexer(ss.str(), error_handler);
     lexer.uncomment();
 
     Parser parser(lexer, error_handler, true, output_str);

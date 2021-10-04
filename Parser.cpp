@@ -2,11 +2,10 @@
 // Created by WYSJ6174 on 2021/10/3.
 //
 
-#include <commctrl.h>
 #include "Parser.h"
 
-Parser::Parser(Lexer &lexer, ErrorHandler &error_handler, bool print_mode, std::ofstream &out) :
-        lexer_(lexer), error_handler_(error_handler), print_mode_(print_mode), out_(out) {}
+Parser::Parser(Lexer &lexer, ErrorHandler &error_handler, bool print_mode, std::vector<std::string>& out_strings) :
+        lexer_(lexer), error_handler_(error_handler), print_mode_(print_mode), out_strings_(out_strings) {}
 
 
 // if pos is behind read_tokens
@@ -119,6 +118,13 @@ void Parser::Program() {
     out_strings_.emplace_back("CompUnit");
     // TODO
     // OUTPUT string in vector
+    if (print_mode_) {
+        auto it = out_strings_.begin();
+        while (it != out_strings_.end()) {
+            cout << *it << endl;
+            it += 1;
+        }
+    }
 }
 
 // Decl-> ConstDecl | VarDecl
@@ -698,38 +704,162 @@ void Parser::Cond() {
     output("<Cond>");
 }
 
+// <LOrExp>::= LAndExp | LOrExp '||' LAndExp
+// <LOrExp>::= LAndExp { '||' LAndExp }
+// note: left recurrence
+// promise: already read a token
 void Parser::LOrExp() {
-
+    LAndExp();
+    next_sym();
+    while (type_code_ == TypeCode::OR) {
+        next_sym();
+        LAndExp();
+        next_sym();
+    }
+    retract();
+    output("<LOrExp>");
 }
 
+// <LAndExp>::= <EqExp> | <LAndExp> '&&' <EqExp>
+// <LAndExp>::= <EqExp> { '&&' <EqExp> }
+// note: left recurrence
+// promise: already read a token
 void Parser::LAndExp() {
-
+    EqExp();
+    next_sym();
+    while (type_code_ == TypeCode::AND) {
+        next_sym();
+        EqExp();
+        next_sym();
+    }
+    retract();
+    output("<LAndExp>");
 }
 
+// <EqExp>::= <RelExp> | <EqExp> ( '==' | '!=' ) <RelExp>
+// <EqExp>::= <RelExp> { ('==' | '!=') <RelExp>}
+// note: left recurrence
+// promise: already read a token
 void Parser::EqExp() {
-
+    RelExp();
+    next_sym();
+    while (type_code_ == TypeCode::EQL ||
+           type_code_ == TypeCode::NEQ) {
+        next_sym();
+        RelExp();
+        next_sym();
+    }
+    retract();
+    output("<EqExp>");
 }
 
+
+// <RelExp>::= AddExp | RelExp ('<' | '>' | '<=' | '>=') AddExp
+// RelExp::= <AddExp> { ('<' | '>' | '<=' | '>=') <AddExp> }
 void Parser::RelExp() {
-
+    AddExp();
+    next_sym();
+    while (type_code_ == TypeCode::LSS ||
+           type_code_ == TypeCode::LEQ ||
+           type_code_ == TypeCode::GRE ||
+           type_code_ == TypeCode::GEQ) {
+        next_sym();
+        AddExp();
+        next_sym();
+    }
+    retract();
+    output("<RelExp>");
 }
 
+// <WhileStmt>::= 'while' '(' Cond ')' Stmt
 void Parser::WhileStmt() {
+    if (type_code_ == TypeCode::WHILETK) {
+        next_sym(); // '('
+        if (type_code_ == TypeCode::LPARENT) {
+            next_sym();
+            Cond();
+            next_sym();
+            if (type_code_ == TypeCode::RPARENT) {
+                next_sym();
+                Stmt();
+            }
+            else {
+                handle_error("expect ')' in <WhileStmt>");
+            }
+        } else {
+            handle_error("expect '(' in <WhileStmt>");
+        }
 
+    } else {
+        handle_error("while");
+    }
 }
 
+// <ReturnStmt>::= 'return' [<Exp>] ';'
 void Parser::ReturnStmt() {
-
+    if (type_code_ == TypeCode::RETURNTK) {
+        next_sym();
+        if (type_code_ == TypeCode::SEMICN) {
+            // end
+        } else {
+            Exp(); // already read a token
+            next_sym();
+            if (type_code_ == TypeCode::SEMICN) {
+                // end
+            } else {
+                handle_error("expect ';' end of <ReturnStmt>");
+            }
+        }
+    } else {
+        handle_error("expect 'return' in <ReturnStmt>");
+    }
 }
 
+
+// ReadStmt::= LVal '=' 'getint' '(' ')' ';'
 void Parser::ReadStmt() {
-
+    LVal();
+    // TODO: handle error
+    next_sym(); // =
+    next_sym(); // = getint
+    next_sym(); // = getint (
+    next_sym(); // = getint ( )
+    next_sym(); // = getint ( ) ;
 }
 
+// WriteStmt-> 'printf' '(' FormatString {',' Exp } ')' ';'
+// promise: printf is the token read, don't check
 void Parser::WriteStmt() {
-
+    next_sym();
+    if (type_code_ == TypeCode::LPARENT) {
+        next_sym();  // FormatString
+        next_sym(); //
+        while (type_code_ == TypeCode::COMMA) {
+            next_sym();
+            Exp();
+            next_sym(); // will be ',' ?
+        }
+        if (type_code_ == TypeCode::RPARENT) {
+            next_sym();
+            if (type_code_ == TypeCode::SEMICN) {
+                // end
+            } else {
+                handle_error("expect ';' end of WriteStmt");
+            }
+        } else {
+            handle_error("expect ')' in WriteStmt");
+        }
+    } else {
+        handle_error("expect '(' in WriteStmt");
+    }
 }
 
+// MainFuncDef-> 'int' 'main' '(' ')' Block
 void Parser::MainFuncDef() {
-
+    next_sym(); // int main
+    next_sym(); // int main (
+    next_sym(); // int main ( )
+    next_sym();
+    Block();
+    output("<MainFuncDef>");
 }
