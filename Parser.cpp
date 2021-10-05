@@ -4,8 +4,8 @@
 
 #include "Parser.h"
 
-Parser::Parser(Lexer &lexer, ErrorHandler &error_handler, bool print_mode, std::vector<std::string>& out_strings) :
-        lexer_(lexer), error_handler_(error_handler), print_mode_(print_mode), out_strings_(out_strings) {}
+Parser::Parser(Lexer &lexer, ErrorHandler &error_handler, bool print_mode,ofstream& out) :
+        lexer_(lexer), error_handler_(error_handler), print_mode_(print_mode), out_(out) {}
 
 
 // if pos is behind read_tokens
@@ -55,73 +55,71 @@ void Parser::Program() {
     next_sym();
     // three cond: const / int / void
     // three branches: Decl, Func, Main
-    while (true) {
+    while (type_code_ == TypeCode::CONSTTK ||
+           type_code_ == TypeCode::INTTK) {
         if (type_code_ == TypeCode::CONSTTK) {
             Decl();
             next_sym();
-        } else if (type_code_ == TypeCode::VOIDTK) {
-            break;
-        }
-        // int a = / int a[ / int a( / int main(
-        else if (type_code_ == TypeCode::INTTK) {
+        } else { // must be 'int' here
             next_sym(); // int a
-            next_sym(); // int a *
-            if (type_code_ == TypeCode::ASSIGN ||
-                type_code_ == TypeCode::LBRACK) {
-                retract();
-                retract();
-                Decl();
+            if (type_code_ == TypeCode::IDENFR) {
                 next_sym();
+                if (type_code_ == TypeCode::COMMA ||
+                    type_code_ == TypeCode::SEMICN ||
+                    type_code_ == TypeCode::ASSIGN ||
+                    type_code_ == TypeCode::LBRACK )
+                {
+                    retract();
+                    retract();
+                    Decl();
+                    next_sym();
+                } else {
+                    retract();
+                    retract();
+                    break;
+                }
             } else {
-                retract();
                 retract();
                 break;
             }
-        } else {
-            handle_error("const or int or void at {Decl}");
         }
     }
 
+    // promise there is only one token read
+
     // {FuncDef}
-    while (true) {
+    while (type_code_ == TypeCode::VOIDTK ||
+            type_code_ == TypeCode::INTTK)
+    {
         if (type_code_ == TypeCode::VOIDTK) {
             FuncDef();
             next_sym();
-        }
-        // int a( / int main(
-        else if (type_code_ == TypeCode::INTTK) {
+        } else { // must be 'int'
             next_sym();
             if (type_code_ == TypeCode::IDENFR) {
                 retract();
                 FuncDef();
                 next_sym();
-            }
-            else {
+            } else {
                 retract();
                 break;
             }
-        } else {
-//            handle_error("funcdef error");
-            break;
         }
     }
 
     // MainDef
-    next_sym();
-    if (type_code_ == TypeCode::MAINTK){
-        retract();
+    if (type_code_ == TypeCode::INTTK) {
         MainFuncDef();
     } else {
-        handle_error("expect main");
+        handle_error("expect 'int' head of MainFuncDef");
     }
 
-    out_strings_.emplace_back("CompUnit");
-    // TODO
-    // OUTPUT string in vector
+
+    out_strings_.emplace_back("<CompUnit>");
     if (print_mode_) {
         auto it = out_strings_.begin();
         while (it != out_strings_.end()) {
-            cout << *it << endl;
+            out_ << *it << endl;
             it += 1;
         }
     }
@@ -196,13 +194,18 @@ void Parser::ConstExp() {
 
 // <AddExp>::= <MulExp> | <AddExp> ('+'|'-') <MulExp>
 // <AddExp>::= <MulExp> {('+'|'-') <MulExp>}
-// !!: left recurrence
+// note: left recurrence
 // promise: already read a token
 void Parser::AddExp() {
     MulExp();
     next_sym();
     while (type_code_ == TypeCode::PLUS ||
             type_code_ == TypeCode::MINU){
+        //erase then read
+        retract();
+        output("<AddExp>");
+        next_sym();
+
         next_sym();
         MulExp();
         next_sym();
@@ -221,6 +224,11 @@ void Parser::MulExp() {
     while (type_code_ == TypeCode::MULT ||
             type_code_ == TypeCode::DIV ||
             type_code_ == TypeCode::MOD) {
+        // erase then read
+        retract();
+        output("<MulExp>");
+        next_sym();
+
         next_sym();
         UnaryExp();
         next_sym();
@@ -372,6 +380,7 @@ void Parser::UnaryOp() {
     } else {
         handle_error("expect + - ! in <UnaryOp>");
     }
+    output("<UnaryOp>");
 }
 
 // <ConstInitVal>::= '{' [ ConstInitVal { ',' ConstInitVal } ] '}' |
@@ -416,7 +425,7 @@ void Parser::VarDecl() {
             next_sym();
         }
         if (type_code_ == TypeCode::SEMICN) {
-            output("<VarDecl");
+            output("<VarDecl>");
         } else {
             handle_error("expect ';' at end of <VarDef>");
         }
@@ -661,40 +670,46 @@ void Parser::Stmt() {
     output("<Stmt>");
 }
 
+
+// AssignStmt::= LVal '=' Exp ';'
 void Parser::AssignStmt() {
     LVal();
     next_sym();
     if (type_code_ == TypeCode::ASSIGN) {
         next_sym();
         Exp();
+        next_sym();
+        if (type_code_ == TypeCode::COMMA) {
+            // end
+        } else {
+            handle_error("expect ; end of Assignment");
+        }
     } else {
         handle_error("expect '=' end of <AssignStmt>");
     }
 }
 
+// IfStmt::= 'if' '(' Cond ')' Stmt [ 'else' Stmt ]
+// promise: already read a if_token
 void Parser::IfStmt() {
-    if (type_code_== TypeCode::IFTK) {
+    next_sym();
+    if (type_code_ == TypeCode::LPARENT) {
         next_sym();
-        if (type_code_ == TypeCode::LPARENT) {
+        Cond();
+        next_sym();
+        if (type_code_ == TypeCode::RPARENT) {
             next_sym();
-            Cond();
+            Stmt();
             next_sym();
-            if (type_code_ == TypeCode::RPARENT) {
+            if (type_code_ == TypeCode::ELSETK) {
                 next_sym();
                 Stmt();
-                next_sym();
-                if (type_code_ == TypeCode::ELSETK) {
-                    next_sym();
-                    Stmt();
-                } else {
-                    retract();
-                }
             } else {
-                handle_error("");
+                retract();
             }
+        } else {
+            handle_error("");
         }
-    } else {
-        handle_error("");
     }
 }
 
@@ -712,6 +727,11 @@ void Parser::LOrExp() {
     LAndExp();
     next_sym();
     while (type_code_ == TypeCode::OR) {
+        // erase then read
+        retract();
+        output("<LOrExp>");
+        next_sym();
+
         next_sym();
         LAndExp();
         next_sym();
@@ -728,6 +748,11 @@ void Parser::LAndExp() {
     EqExp();
     next_sym();
     while (type_code_ == TypeCode::AND) {
+        // erase then read
+        retract();
+        output("<LAndExp>");
+        next_sym();
+
         next_sym();
         EqExp();
         next_sym();
@@ -745,6 +770,11 @@ void Parser::EqExp() {
     next_sym();
     while (type_code_ == TypeCode::EQL ||
            type_code_ == TypeCode::NEQ) {
+        // erase then read
+        retract();
+        output("<EqExp>");
+        next_sym();
+
         next_sym();
         RelExp();
         next_sym();
@@ -756,6 +786,7 @@ void Parser::EqExp() {
 
 // <RelExp>::= AddExp | RelExp ('<' | '>' | '<=' | '>=') AddExp
 // RelExp::= <AddExp> { ('<' | '>' | '<=' | '>=') <AddExp> }
+// note: left recurrence
 void Parser::RelExp() {
     AddExp();
     next_sym();
@@ -763,6 +794,11 @@ void Parser::RelExp() {
            type_code_ == TypeCode::LEQ ||
            type_code_ == TypeCode::GRE ||
            type_code_ == TypeCode::GEQ) {
+        // erase the token then ...
+        retract();
+        output("<RelExp>");
+        next_sym();
+
         next_sym();
         AddExp();
         next_sym();

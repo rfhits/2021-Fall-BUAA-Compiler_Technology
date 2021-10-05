@@ -16,13 +16,12 @@ int main() {
     in_stream.close();
     ofstream out(output_path);
     ofstream error_out(error_out_path);
-
     ErrorHandler error_handler(error_out);
-
+//    ErrorHandler error_handler(std::cerr);
     Lexer lexer(ss.str(), error_handler);
     lexer.uncomment();
 
-    Parser parser(lexer, error_handler, true, output_str);
+    Parser parser(lexer, error_handler, true, out);
     parser.Program();
 
     out.close();

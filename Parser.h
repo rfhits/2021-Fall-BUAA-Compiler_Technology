@@ -18,7 +18,7 @@ private:
     int pos_ = 0; // have process pos tokens
     Token token_ = Token(TYPE_UNDEFINED);
     TypeCode type_code_; // the token's type_code
-//    std::ostream& out_; // output stream
+    std::ostream& out_; // output stream
     std::vector<Token> read_tokens_; // the tokens have been read
     std::vector<string> out_strings_;
 
@@ -73,7 +73,7 @@ private:
     void MainFuncDef();
 
 public:
-    Parser(Lexer& lexer, ErrorHandler& error_handler, bool print_mode, std::vector<std::string>& out_strings);
+    Parser(Lexer& lexer, ErrorHandler& error_handler, bool print_mode, ofstream& out);
     void Program();
 
 
