@@ -9,7 +9,7 @@
 #include <vector>
 #include <map>
 
-using namespace std;
+//using namespace std;
 
 enum TypeCode {
     TYPE_UNDEFINED, TYPE_EOF,
@@ -24,7 +24,7 @@ enum TypeCode {
     LBRACK, RBRACK,LBRACE, RBRACE
 };
 
-const map<string, TypeCode> reserved_word2type_code = {
+const std::map<std::string, TypeCode> reserved_word2type_code = {
         {"main", MAINTK},
         {"const", CONSTTK},
         {"int", INTTK},
@@ -40,7 +40,7 @@ const map<string, TypeCode> reserved_word2type_code = {
 };
 
 
-const map<string, TypeCode> char2type_code = {
+const std::map<std::string, TypeCode> char2type_code = {
         {"+", TypeCode::PLUS},
         {"-", TypeCode::MINU},
         {"*", TypeCode::MULT},
@@ -57,7 +57,7 @@ const map<string, TypeCode> char2type_code = {
 };
 
 
-const map<TypeCode, string> type_code2str = {
+const std::map<TypeCode, std::string> type_code2str = {
         {TypeCode::IDENFR, "IDENFR"},
         {TypeCode::INTCON, "INTCON"},
         {TypeCode::STRCON, "STRCON"},
@@ -101,7 +101,12 @@ const map<TypeCode, string> type_code2str = {
 class Token {
 private:
     TypeCode type_code_ = TYPE_UNDEFINED; //类别码
-    string str_value_; // if token is a string， store value
+
+    // if token is a string, store value
+    // identifier: the name
+    std::string str_value_;
+
+
     int int_value_ ;
 
     int line_no_; // token appears in this line
@@ -110,20 +115,20 @@ public:
 
     Token(TypeCode type_code);
 
-    Token(TypeCode type_code, string str_value, int line_no, int col_no);
+    Token(TypeCode type_code, std::string str_value, int line_no, int col_no);
 
     Token(TypeCode type_code, int int_value, int line_no, int col_no);
 
     TypeCode get_type_code();
-    string get_str_value();
+    std::string get_str_value();
     int get_int_value();
-    string get_type_name();
+    std::string get_type_name();
     int get_line_no() const {
         return line_no_;
     }
     void set_type_code(TypeCode type_code);
-    void set_str_value(string& str_value);
-    string to_string();
+    void set_str_value(std::string& str_value);
+    std::string to_string();
 
 };
 

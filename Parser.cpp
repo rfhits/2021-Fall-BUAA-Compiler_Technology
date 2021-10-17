@@ -4,8 +4,10 @@
 
 #include "Parser.h"
 
-Parser::Parser(Lexer &lexer, ErrorHandler &error_handler, bool print_mode,ofstream& out) :
-        lexer_(lexer), error_handler_(error_handler), print_mode_(print_mode), out_(out) {}
+Parser::Parser(SymbolTable& symbol_table, Lexer &lexer, ErrorHandler &error_handler, Intermediate& intermediate,
+               bool print_mode,std::ofstream& out) :
+        symbol_table_(symbol_table), lexer_(lexer), error_handler_(error_handler),
+        intermediate_(intermediate), print_mode_(print_mode), out_(out) {}
 
 
 // if pos is behind read_tokens
@@ -21,6 +23,7 @@ void Parser::next_sym() {
         read_tokens_.push_back(token_);
     }
     type_code_ = token_.get_type_code();
+    name_ = token_.get_str_value();
     pos_ += 1;
     out_strings_.push_back(token_.to_string());
 }
@@ -50,7 +53,17 @@ void Parser::handle_error(const std::string& msg) {
     error_handler_.log_error(token_.get_line_no(), msg);
 }
 
-// CompUnit::=
+
+void Parser::handle_error(ErrorType error_type) {
+    if (error_type == ErrorType::A) {
+
+    } else if (error_type == ErrorType::B) {
+
+    }
+}
+
+
+// CompUnit-> {Decl} {FuncDef} MainFuncDef
 void Parser::Program() {
     next_sym();
     // three cond: const / int / void
@@ -119,14 +132,14 @@ void Parser::Program() {
     if (print_mode_) {
         auto it = out_strings_.begin();
         while (it != out_strings_.end()) {
-            out_ << *it << endl;
+            out_ << *it << std::endl;
             it += 1;
         }
     }
 }
 
 // Decl-> ConstDecl | VarDecl
-// promise: already has a CONST or INT
+// promise: already read a CONST or INT
 void Parser::Decl() {
     if (type_code_ == TypeCode::CONSTTK) {
         ConstDecl();
@@ -137,7 +150,7 @@ void Parser::Decl() {
     }
 }
 
-// <ConstDecl>::= const int <ConstDef> {, <ConstDef>}
+// ConstDecl-> const int ConstDef {, ConstDef}
 // promise: already read a const
 void Parser::ConstDecl() {
     next_sym();
@@ -161,11 +174,23 @@ void Parser::ConstDecl() {
     }
 }
 
-// <ConstDef>::= Ident {'[' ConstExp ']'} '=' ConstInitVal
-// promise: already read an Indent, AK type_code==Ident
+// ConstDef-> Ident {'[' ConstExp ']'} '=' ConstInitVal
+// promise: already read an Identifier
 void Parser::ConstDef() {
     next_sym();
-    while (type_code_ == TypeCode::LBRACK) {
+    if (type_code_ == TypeCode::LBRACK) {
+        next_sym();
+        auto const_ret = ConstExp();
+
+        next_sym();
+        if (type_code_ == TypeCode::RBRACK) {
+            next_sym();
+        } else {
+            handle_error("expect a ] match for [");
+        }
+    }
+
+    if (type_code_ == TypeCode::LBRACK) {
         next_sym();
         ConstExp();
         next_sym();
@@ -186,94 +211,200 @@ void Parser::ConstDef() {
     output("<ConstDef>");
 }
 
-// <ConstExp>::= AddExp
-void Parser::ConstExp() {
-    AddExp();
+// ConstExp-> AddExp
+int Parser::ConstExp() {
+    auto addexp_ret =  AddExp(true);
     output("<ConstExp>");
+    return std::stoi(addexp_ret.second);
 }
 
-// <AddExp>::= <MulExp> | <AddExp> ('+'|'-') <MulExp>
-// <AddExp>::= <MulExp> {('+'|'-') <MulExp>}
+// AddExp-> MulExp | AddExp ('+'|'-') MulExp
+// AddExp-> MulExp { ('+'|'-') MulExp}
 // note: left recurrence
 // promise: already read a token
-void Parser::AddExp() {
-    MulExp();
+// @param: parse_const: should parse a const but not an expr
+std::pair<DataType, std::string> Parser::AddExp(bool parse_const) {
+    int parsed_value = 0; // for parse const
+    std::pair<DataType, std::string> mulexp_ret; // ret received from MulExp
+    std::string ret_var_name;
+    DataType data_type = DataType::INVALID;
+
+    mulexp_ret = MulExp(parse_const);
+    if (parse_const) {
+        parsed_value = std::stoi(mulexp_ret.second);
+    } else {
+        ret_var_name = mulexp_ret.second;
+    }
     next_sym();
     while (type_code_ == TypeCode::PLUS ||
             type_code_ == TypeCode::MINU){
-        //erase then read
+        int sign = (type_code_ == TypeCode::PLUS)? 1:-1;
+        //erase then read again
         retract();
         output("<AddExp>");
         next_sym();
 
         next_sym();
-        MulExp();
+        mulexp_ret = MulExp();
+        if (parse_const) {
+            parsed_value += sign * std::stoi(mulexp_ret.second);
+        } else {
+            // combine it with the var before
+            std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
+            IntermOp op = (sign == 1)? IntermOp::ADD : IntermOp::SUB;
+            intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, mulexp_ret.second);
+            ret_var_name = tmp_var_name;
+        }
         next_sym();
     }
     retract(); // not '+' or '-', retract
     output("<AddExp>");
+    if (parse_const) {
+        return std::make_pair(DataType::NUM, std::to_string(parsed_value));
+    } else {
+        return std::make_pair(data_type, ret_var_name);
+    }
 }
 
-// <MulExp>::= <UnaryExp> | <MulExp> (* / %) <UnaryExp>
-// <MulExp>::= <UnaryExp> {('*' | '/' | '%') <UnaryExp>}
+// MulExp-> UnaryExp | MulExp (* / %) UnaryExp
+// MulExp-> UnaryExp {('*' | '/' | '%') UnaryExp}
 // alert: left recurrence
-// promise: already a token
-void Parser::MulExp() {
-    UnaryExp();
+// promise: already read a token
+// @ret:
+//   if parse_const, return a NUM
+std::pair<DataType, std::string> Parser::MulExp(bool parse_const) {
+    int parsed_value = 0;
+    std::pair<DataType, std::string> unary_exp_ret;
+    std::string ret_var_name;
+
+    unary_exp_ret = UnaryExp(parse_const);
+    if (parse_const) {
+        parsed_value = std::stoi(unary_exp_ret.second);
+    }
+
     next_sym();
     while (type_code_ == TypeCode::MULT ||
             type_code_ == TypeCode::DIV ||
             type_code_ == TypeCode::MOD) {
+        int sign = (type_code_ == TypeCode::MULT)? 0 : ((type_code_==TypeCode::DIV)? 1:2);
+
         // erase then read
         retract();
         output("<MulExp>");
         next_sym();
 
         next_sym();
-        UnaryExp();
+        unary_exp_ret = UnaryExp();
+        if (parse_const) {
+            int parsed_unary_exp_value = std::stoi(unary_exp_ret.second);
+            if (sign == 0) {
+                parsed_value *= parsed_unary_exp_value;
+            } else if (sign == 1) {
+                parsed_value /= parsed_unary_exp_value;
+            } else {
+                parsed_value %= parsed_unary_exp_value;
+            }
+        } else {
+            std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
+            IntermOp op = (sign==0)? IntermOp::MUL : ((sign==1)? IntermOp::DIV:IntermOp::MOD);
+            intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, unary_exp_ret.second);
+            ret_var_name = tmp_var_name;
+        }
         next_sym();
     }
     // not *| / | %
     retract();
     output("<MulExp>");
+    if (parse_const) {
+        return std::make_pair(DataType::NUM, std::to_string(parsed_value));
+    } else {
+        return std::make_pair(DataType::INT, ret_var_name);
+    }
 }
 
-// <UnaryExp>::= PrimaryExp |
-//              Ident '(' [FuncRParams] ')' |
-//              UnaryOp UnaryExp
+// UnaryExp -> PrimaryExp |
+//             Ident '(' [FuncRParams] ')' |
+//             UnaryOp UnaryExp
 // promise: already read a token
 // note: 7 branches
-void Parser::UnaryExp() {
+std::pair<DataType, std::string> Parser::UnaryExp(bool parse_const) {
+    int parsed_value = 0;
+    std::string ret_var_name;
+    DataType ret_type;
+    std::pair<DataType, std::string> inner_exp_ret;
+
+
     // ( Exp )
     if (type_code_ == TypeCode::LPARENT) {
-        PrimaryExp();
+        inner_exp_ret = PrimaryExp(parse_const);
+        if (parse_const) {
+            parsed_value = std::stoi(inner_exp_ret.second);
+        } else {
+            ret_var_name = inner_exp_ret.second;
+        }
     }
     else if (type_code_ == TypeCode::INTCON) {
-        PrimaryExp();
+        inner_exp_ret = PrimaryExp(parse_const);
+        if (parse_const) {
+            parsed_value = std::stoi(inner_exp_ret.second);
+        } else {
+            ret_var_name = inner_exp_ret.second;
+        }
     }
     else if (type_code_ == TypeCode::PLUS ||
                 type_code_ == TypeCode::MINU ||
                 type_code_ == TypeCode::NOT) {
-        UnaryOp();
+        std::string temp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
+        int op_no = UnaryOp();
         next_sym();
-        UnaryExp();
+        inner_exp_ret = UnaryExp();
+        parsed_value = std::stoi(inner_exp_ret.second);
+        if (op_no == 0) { // +
+            // no change to final return var name, it is in inner_exp_ret
+        } else if (op_no == 1) {
+            if (parse_const) {
+                parsed_value = 0 - parsed_value;
+            } else {
+                std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_);
+                intermediate_.AddMidCode(temp_var_name, IntermOp::SUB, "0", inner_exp_ret.second);
+                ret_var_name = temp_var_name;
+            }
+        }
     }
     // Ident '(' [FuncRParams] ')'
-    // Ident { '[' Exp ']' }
+    // Ident { '[' Exp ']' } may occur in Primary Expression
+    // promise: parse const won't go into this branch
     else if (type_code_ == TypeCode::IDENFR) {
+        std::string called_func_name = token_.get_str_value();
+        int need_param_num = 0;
+        int provide_param_num = 0;
         next_sym();
         if (type_code_ == TypeCode::LPARENT) {
             // now sure that: Ident '(' [FuncRParams] ')'
+            auto search_res = symbol_table_.SearchVisibleSymbol("", called_func_name, 0);
+            need_param_num = search_res.second->value;
+
+            if (search_res.first == false) handle_error(ErrorType::C);
+
+            ret_type = search_res.second->data_type;
+            if (ret_type == DataType::VOID) handle_error(ErrorType::E);
+
             next_sym();
             if (type_code_ == TypeCode::RPARENT) {
-                // END
+                if (need_param_num != 0) handle_error(ErrorType::D);
+                if (ret_type != DataType::VOID) {
+                    std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_);
+                    intermediate_.AddMidCode(tmp_var_name, IntermOp::CALL, called_func_name, "");
+                } else {
+                    // pass;
+                }
             } else {
                 FuncRParams();
                 next_sym();
                 if (type_code_ == TypeCode::RPARENT) {
                     // pass
                 } else {
-                    handle_error("expect ')' in <UnaryExp>");
+                    handle_error(ErrorType::J);
                 }
             }
         }
@@ -293,8 +424,9 @@ void Parser::UnaryExp() {
 // <PrimaryExp>::= '(' Exp ')' |
 //                 LVal |
 //                 Number
+// first: '(', IDENFR, INTCON
 // promise: already a token
-void Parser::PrimaryExp() {
+std::pair<DataType, std::string> Parser::PrimaryExp(bool parse_const) {
     if (type_code_ == TypeCode::LPARENT) {
         next_sym();
         Exp();
@@ -358,7 +490,7 @@ void Parser::IntConst() {
 
 // <FuncRParams>::= <Exp> { ',' <Exp> }
 // promise: already read a token
-void Parser::FuncRParams() {
+std::vector<std::string> Parser::FuncRParams() {
     Exp();
     next_sym();
     while (type_code_ == TypeCode::COMMA) {
@@ -372,15 +504,24 @@ void Parser::FuncRParams() {
 
 // <UnaryOp>::= '+' | '-' | '!'
 // promise: already read a token
-void Parser::UnaryOp() {
+int Parser::UnaryOp() {
+    int op = -1;
     if (type_code_ == TypeCode::PLUS ||
         type_code_ == TypeCode::MINU ||
         type_code_ == TypeCode::NOT) {
-        // pass
+        if (type_code_ == TypeCode::PLUS) {
+            op = 0;
+        } else if (type_code_ == TypeCode::MINU) {
+            op = 1;
+        } else {
+            op = 2;
+        }
+
     } else {
         handle_error("expect + - ! in <UnaryOp>");
     }
     output("<UnaryOp>");
+    return op;
 }
 
 // <ConstInitVal>::= '{' [ ConstInitVal { ',' ConstInitVal } ] '}' |
@@ -713,14 +854,14 @@ void Parser::IfStmt() {
     }
 }
 
-// <Cond>::LOrExp
+// Cond-> LOrExp
 void Parser::Cond() {
     LOrExp();
     output("<Cond>");
 }
 
-// <LOrExp>::= LAndExp | LOrExp '||' LAndExp
-// <LOrExp>::= LAndExp { '||' LAndExp }
+// LOrExp -> LAndExp | LOrExp '||' LAndExp
+// LOrExp -> LAndExp { '||' LAndExp }
 // note: left recurrence
 // promise: already read a token
 void Parser::LOrExp() {
@@ -740,8 +881,8 @@ void Parser::LOrExp() {
     output("<LOrExp>");
 }
 
-// <LAndExp>::= <EqExp> | <LAndExp> '&&' <EqExp>
-// <LAndExp>::= <EqExp> { '&&' <EqExp> }
+// LAndExp -> EqExp | LAndExp '&&' EqExp
+// LAndExp -> EqExp { '&&' EqExp }
 // note: left recurrence
 // promise: already read a token
 void Parser::LAndExp() {
@@ -831,7 +972,7 @@ void Parser::WhileStmt() {
     }
 }
 
-// <ReturnStmt>::= 'return' [<Exp>] ';'
+// ReturnStmt-> 'return' [<Exp>] ';'
 void Parser::ReturnStmt() {
     if (type_code_ == TypeCode::RETURNTK) {
         next_sym();
@@ -852,7 +993,7 @@ void Parser::ReturnStmt() {
 }
 
 
-// ReadStmt::= LVal '=' 'getint' '(' ')' ';'
+// ReadStmt-> LVal '=' 'getint' '(' ')' ';'
 void Parser::ReadStmt() {
     LVal();
     // TODO: handle error

@@ -21,7 +21,9 @@ int main() {
     Lexer lexer(ss.str(), error_handler);
     lexer.uncomment();
 
-    Parser parser(lexer, error_handler, true, out);
+    SymbolTable symbol_table;
+
+    Parser parser(lexer, symbol_table,error_handler, true, out);
     parser.Program();
 
     out.close();

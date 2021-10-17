@@ -8,6 +8,7 @@
 #include <iostream>
 #include <fstream>
 
+
 class ErrorHandler {
 private:
     std::ofstream& out_;

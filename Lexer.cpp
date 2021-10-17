@@ -2,16 +2,17 @@
 // Created by WYSJ6174 on 2021/9/24.
 //
 
+#include <wsman.h>
 #include "Lexer.h"
 #include "ErrorHandler.h"
 
 
-Lexer::Lexer(string &&source, ErrorHandler& error_handler):
+Lexer::Lexer(std::string &&source, ErrorHandler& error_handler):
     source_(source), error_handler_(error_handler) {
 }
 
 
-void Lexer::handle_error(const string& msg) {
+void Lexer::handle_error(const std::string& msg) {
     error_handler_.log_error(line_no_, msg);
 }
 
@@ -57,7 +58,7 @@ void Lexer::uncomment() {
 // maintain the line_no_, col_num, pos.
 int Lexer::get_char() {
     if (pos_ >= source_.length()) {
-        cerr << "position out of source code" << endl;
+        std::cerr << "position out of source code" << std::endl;
     }
     if (ch_ == '\n') {
         line_no_+= 1;
@@ -200,9 +201,9 @@ Token Lexer::get_token() {
     else if (ch_ == '+' || ch_ == '-' || ch_ == '*' || ch_ == '/' || ch_ == '%'
         || ch_ == ';' || ch_ == ',' || ch_ == '(' || ch_ == ')' || ch_ == '['
         || ch_ == ']' || ch_ == '{' || ch_ == '}') {
-        auto iter = char2type_code.find(string(1,ch_));
+        auto iter = char2type_code.find(std::string(1,ch_));
         if (iter != char2type_code.end()) {
-            str_token_ = string(1, ch_);
+            str_token_ = std::string(1, ch_);
             type_code = iter->second;
         }
         else {
