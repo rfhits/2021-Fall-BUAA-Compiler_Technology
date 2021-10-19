@@ -150,7 +150,7 @@ void Parser::Decl() {
     }
 }
 
-// ConstDecl-> const int ConstDef {, ConstDef}
+// ConstDecl -> const int ConstDef {, ConstDef}
 // promise: already read a const
 void Parser::ConstDecl() {
     next_sym();
@@ -174,67 +174,95 @@ void Parser::ConstDecl() {
     }
 }
 
-// ConstDef-> Ident {'[' ConstExp ']'} '=' ConstInitVal
+// ConstDef -> Ident {'[' ConstExp ']'} '=' ConstInitVal
 // promise: already read an Identifier
 void Parser::ConstDef() {
+    bool is_array = false;
+    std::string const_name = token_.get_str_value();
     next_sym();
     if (type_code_ == TypeCode::LBRACK) {
+        is_array = true;
         next_sym();
-        auto const_ret = ConstExp();
-
+        auto const_exp_ret = ConstExp();
+        dim0_size_ = std::stoi(const_exp_ret.second);
         next_sym();
         if (type_code_ == TypeCode::RBRACK) {
             next_sym();
         } else {
-            handle_error("expect a ] match for [");
+            handle_error(ErrorType::EXPECTED_BRACK);
         }
     }
-
     if (type_code_ == TypeCode::LBRACK) {
         next_sym();
-        ConstExp();
+        auto const_exp_ret = ConstExp();
+        dim1_size_ = std::stoi(const_exp_ret.second);
         next_sym();
         if (type_code_ == TypeCode::RBRACK) {
             next_sym();
         } else {
-            handle_error("expect a ] match for [");
+            handle_error(ErrorType::EXPECTED_BRACK);
         }
     }
 
-    // expect '='
     if (type_code_ == TypeCode::ASSIGN) {
         next_sym();
-        ConstInitVal();
+        auto const_init_val_ret = ConstInitVal();
+        if (const_init_val_ret.first == DataType::INT) {
+            int parsed_int = std::stoi(const_init_val_ret.second);
+            symbol_table_.AddSymbol("", DataType::INT, SymbolType::CONST,
+                                    const_name, parsed_int, 0);
+        } else if (const_init_val_ret.first == DataType::INT_ARR) {
+            std::vector<int> parsed_int_arr = str_to_vec_int(const_init_val_ret.second);
+            symbol_table_.AddConstArray(const_name, dim0_size_, dim1_size_, parsed_int_arr);
+        } else {
+            handle_error("DataType error in ConstDef");
+        }
     } else {
-        handle_error("expect = in <ConstDef>");
+        handle_error("expect '=' in <ConstDef>");
     }
+
     output("<ConstDef>");
 }
 
 // ConstExp-> AddExp
-int Parser::ConstExp() {
-    auto addexp_ret =  AddExp(true);
+// check: is an integer string return
+// promise: return an integer in string
+std::pair<DataType, std::string> Parser::ConstExp() {
+    int ret_int_value;
+    auto add_exp_ret =  AddExp();
+    try {
+        // judge is an integer
+        ret_int_value = std::stoi(add_exp_ret.second);
+    } catch(std::invalid_argument& e) {
+        handle_error("<ConstExp> expect a const exp from AddExp");
+    }
+
     output("<ConstExp>");
-    return std::stoi(addexp_ret.second);
+    return std::make_pair(add_exp_ret.first, std::to_string(ret_int_value));
 }
 
 // AddExp-> MulExp | AddExp ('+'|'-') MulExp
 // AddExp-> MulExp { ('+'|'-') MulExp}
 // note: left recurrence
 // promise: already read a token
-// @param: parse_const: should parse a const but not an expr
-std::pair<DataType, std::string> Parser::AddExp(bool parse_const) {
-    int parsed_value = 0; // for parse const
-    std::pair<DataType, std::string> mulexp_ret; // ret received from MulExp
+// try to parse as integer
+// if can't, return a temp_var_name
+std::pair<DataType, std::string> Parser::AddExp() {
+    bool cur_be_parsed_int = false; // can be parsed as integer currently?
     std::string ret_var_name;
+    std::pair<DataType, std::string> mul_exp_ret; // ret received from MulExp
     DataType data_type = DataType::INVALID;
 
-    mulexp_ret = MulExp(parse_const);
-    if (parse_const) {
-        parsed_value = std::stoi(mulexp_ret.second);
+    mul_exp_ret = MulExp();
+    data_type = mul_exp_ret.first;
+    ret_var_name = mul_exp_ret.second; // the second may be an integer
+
+    if(is_integer(ret_var_name)) {
+        cur_be_parsed_int = true;
     } else {
-        ret_var_name = mulexp_ret.second;
+        cur_be_parsed_int = false;
     }
+
     next_sym();
     while (type_code_ == TypeCode::PLUS ||
             type_code_ == TypeCode::MINU){
@@ -245,42 +273,43 @@ std::pair<DataType, std::string> Parser::AddExp(bool parse_const) {
         next_sym();
 
         next_sym();
-        mulexp_ret = MulExp();
-        if (parse_const) {
-            parsed_value += sign * std::stoi(mulexp_ret.second);
+        mul_exp_ret = MulExp();
+        if (cur_be_parsed_int && is_integer(mul_exp_ret.second)) {
+            ret_var_name = std::to_string(std::stoi(ret_var_name)
+                                            + sign * std::stoi(mul_exp_ret.second));
         } else {
+            cur_be_parsed_int = false;
             // combine it with the var before
             std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
             IntermOp op = (sign == 1)? IntermOp::ADD : IntermOp::SUB;
-            intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, mulexp_ret.second);
+            intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, mul_exp_ret.second);
             ret_var_name = tmp_var_name;
         }
         next_sym();
     }
     retract(); // not '+' or '-', retract
     output("<AddExp>");
-    if (parse_const) {
-        return std::make_pair(DataType::NUM, std::to_string(parsed_value));
-    } else {
-        return std::make_pair(data_type, ret_var_name);
-    }
+    return std::make_pair(data_type, ret_var_name);
 }
 
 // MulExp-> UnaryExp | MulExp (* / %) UnaryExp
 // MulExp-> UnaryExp {('*' | '/' | '%') UnaryExp}
 // alert: left recurrence
 // promise: already read a token
-// @ret:
-//   if parse_const, return a NUM
-std::pair<DataType, std::string> Parser::MulExp(bool parse_const) {
-    int parsed_value = 0;
-    std::pair<DataType, std::string> unary_exp_ret;
+// try to parse it: 2*a, 2*3/4
+std::pair<DataType, std::string> Parser::MulExp() {
     std::string ret_var_name;
+    bool cur_be_parsed_int = false;
+    std::pair<DataType, std::string> unary_exp_ret;
 
-    unary_exp_ret = UnaryExp(parse_const);
-    if (parse_const) {
-        parsed_value = std::stoi(unary_exp_ret.second);
+    unary_exp_ret = UnaryExp();
+    ret_var_name = unary_exp_ret.second;
+    if (is_integer(ret_var_name)) {
+        cur_be_parsed_int = true;
+    } else {
+        cur_be_parsed_int = false;
     }
+
 
     next_sym();
     while (type_code_ == TypeCode::MULT ||
@@ -295,16 +324,18 @@ std::pair<DataType, std::string> Parser::MulExp(bool parse_const) {
 
         next_sym();
         unary_exp_ret = UnaryExp();
-        if (parse_const) {
+        if (cur_be_parsed_int && is_integer(unary_exp_ret.second)) {
             int parsed_unary_exp_value = std::stoi(unary_exp_ret.second);
+            int cur_parsed_value = std::stoi(ret_var_name);
             if (sign == 0) {
-                parsed_value *= parsed_unary_exp_value;
+                ret_var_name = std::to_string(parsed_unary_exp_value * cur_parsed_value);
             } else if (sign == 1) {
-                parsed_value /= parsed_unary_exp_value;
+                ret_var_name = std::to_string(parsed_unary_exp_value / cur_parsed_value);
             } else {
-                parsed_value %= parsed_unary_exp_value;
+                ret_var_name = std::to_string(parsed_unary_exp_value % cur_parsed_value);
             }
         } else {
+            cur_be_parsed_int = false;
             std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
             IntermOp op = (sign==0)? IntermOp::MUL : ((sign==1)? IntermOp::DIV:IntermOp::MOD);
             intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, unary_exp_ret.second);
@@ -315,11 +346,7 @@ std::pair<DataType, std::string> Parser::MulExp(bool parse_const) {
     // not *| / | %
     retract();
     output("<MulExp>");
-    if (parse_const) {
-        return std::make_pair(DataType::NUM, std::to_string(parsed_value));
-    } else {
-        return std::make_pair(DataType::INT, ret_var_name);
-    }
+    return std::make_pair(DataType::INT, ret_var_name);
 }
 
 // UnaryExp -> PrimaryExp |
@@ -327,46 +354,58 @@ std::pair<DataType, std::string> Parser::MulExp(bool parse_const) {
 //             UnaryOp UnaryExp
 // promise: already read a token
 // note: 7 branches
-std::pair<DataType, std::string> Parser::UnaryExp(bool parse_const) {
-    int parsed_value = 0;
-    std::string ret_var_name;
-    DataType ret_type;
+std::pair<DataType, std::string> Parser::UnaryExp() {
+    DataType ret_type = DataType::INVALID;
+    std::string ret_var_name; // init value is ""
+    bool cur_be_parsed_int = false;
     std::pair<DataType, std::string> inner_exp_ret;
 
 
-    // ( Exp )
+    // UnaryExp -> Primary -> '(' Exp ')'
     if (type_code_ == TypeCode::LPARENT) {
-        inner_exp_ret = PrimaryExp(parse_const);
-        if (parse_const) {
-            parsed_value = std::stoi(inner_exp_ret.second);
+        inner_exp_ret = PrimaryExp();
+        ret_type = inner_exp_ret.first;
+        ret_var_name = inner_exp_ret.second;
+        if (is_integer(inner_exp_ret.second)) {
+            cur_be_parsed_int = true;
         } else {
-            ret_var_name = inner_exp_ret.second;
+            cur_be_parsed_int = false;
         }
     }
+    // UnaryExp -> Primary -> Number -> IntConst
     else if (type_code_ == TypeCode::INTCON) {
-        inner_exp_ret = PrimaryExp(parse_const);
-        if (parse_const) {
-            parsed_value = std::stoi(inner_exp_ret.second);
-        } else {
-            ret_var_name = inner_exp_ret.second;
-        }
+        inner_exp_ret = PrimaryExp();
+        ret_type = inner_exp_ret.first;
+        ret_var_name = inner_exp_ret.second;
     }
     else if (type_code_ == TypeCode::PLUS ||
                 type_code_ == TypeCode::MINU ||
                 type_code_ == TypeCode::NOT) {
         std::string temp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
-        int op_no = UnaryOp();
+        int op_no = UnaryOp(); // op number
         next_sym();
         inner_exp_ret = UnaryExp();
-        parsed_value = std::stoi(inner_exp_ret.second);
-        if (op_no == 0) { // +
-            // no change to final return var name, it is in inner_exp_ret
-        } else if (op_no == 1) {
-            if (parse_const) {
-                parsed_value = 0 - parsed_value;
+        ret_type = inner_exp_ret.first;
+        ret_var_name = inner_exp_ret.second;
+        if (is_integer(ret_var_name)) {
+            cur_be_parsed_int = true;
+            if (op_no == 0) { // +
+                //
+            } else if (op_no == 1) {
+                ret_var_name = std::to_string(0 - std::stoi(ret_var_name));
             } else {
+                ret_var_name = std::to_string(!std::stoi(ret_var_name));
+            }
+        } else {
+            if (op_no == 0) { // +
+                // no change to final return var name, it is in inner_exp_ret
+            } else if (op_no == 1) {
                 std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_);
                 intermediate_.AddMidCode(temp_var_name, IntermOp::SUB, "0", inner_exp_ret.second);
+                ret_var_name = temp_var_name;
+            } else {
+                std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_);
+                intermediate_.AddMidCode(temp_var_name, IntermOp::NOT, inner_exp_ret.second, "");
                 ret_var_name = temp_var_name;
             }
         }
@@ -375,94 +414,144 @@ std::pair<DataType, std::string> Parser::UnaryExp(bool parse_const) {
     // Ident { '[' Exp ']' } may occur in Primary Expression
     // promise: parse const won't go into this branch
     else if (type_code_ == TypeCode::IDENFR) {
-        std::string called_func_name = token_.get_str_value();
-        int need_param_num = 0;
-        int provide_param_num = 0;
         next_sym();
-        if (type_code_ == TypeCode::LPARENT) {
-            // now sure that: Ident '(' [FuncRParams] ')'
-            auto search_res = symbol_table_.SearchVisibleSymbol("", called_func_name, 0);
+        if (type_code_ == TypeCode::LPARENT) { // now sure that: Ident '(' [FuncRParams] ')'
+
+            int need_param_num = 0;
+            int provide_param_num = 0;
+            std::string called_func_name = token_.get_str_value();
+            auto search_res = symbol_table_.SearchSymbol("", called_func_name, 0);
             need_param_num = search_res.second->value;
 
-            if (search_res.first == false) handle_error(ErrorType::C);
+            if (!search_res.first) handle_error(ErrorType::UNDECL);
 
             ret_type = search_res.second->data_type;
-            if (ret_type == DataType::VOID) handle_error(ErrorType::E);
 
             next_sym();
             if (type_code_ == TypeCode::RPARENT) {
-                if (need_param_num != 0) handle_error(ErrorType::D);
+                if (need_param_num != 0) handle_error(ErrorType::ARG_NO_MISMATCH);
                 if (ret_type != DataType::VOID) {
-                    std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_);
-                    intermediate_.AddMidCode(tmp_var_name, IntermOp::CALL, called_func_name, "");
+                    ret_var_name = intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_);
+                    intermediate_.AddMidCode(ret_var_name, IntermOp::CALL, called_func_name, "");
                 } else {
-                    // pass;
+                    intermediate_.AddMidCode(ret_var_name, IntermOp::CALL, called_func_name, "");
                 }
             } else {
-                FuncRParams();
+                std::vector<std::string> param_list = FuncRParams(called_func_name, need_param_num);
+                // TODO
+                // just call the function, params have should be pushed in param list
+
+                if (ret_type != DataType::VOID) {
+                    ret_var_name = intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_);
+                    intermediate_.AddMidCode(ret_var_name, IntermOp::CALL, called_func_name, "");
+                } else {
+                    intermediate_.AddMidCode(ret_var_name, IntermOp::CALL, called_func_name, "");
+                }
                 next_sym();
                 if (type_code_ == TypeCode::RPARENT) {
                     // pass
                 } else {
-                    handle_error(ErrorType::J);
+                    handle_error(ErrorType::EXPECTED_PARENT);
                 }
             }
         }
         // only one branch left
         else {
             retract();
-            PrimaryExp(); // will go to LVal
+            inner_exp_ret = PrimaryExp(); // will go to LVal
+            ret_type = inner_exp_ret.first;
+            ret_var_name = inner_exp_ret.second;
         }
     }
     else {
-        handle_error("UnaryExp not match");
+        handle_error("Expect a token in FIRST(UnaryExp)");
     }
     output("<UnaryExp>");
+    return std::make_pair(ret_type, ret_var_name);
 }
 
 
-// <PrimaryExp>::= '(' Exp ')' |
+// PrimaryExp -> '(' Exp ')' |
 //                 LVal |
 //                 Number
 // first: '(', IDENFR, INTCON
-// promise: already a token
-std::pair<DataType, std::string> Parser::PrimaryExp(bool parse_const) {
+// promise: already read a token
+std::pair<DataType, std::string> Parser::PrimaryExp() {
+    DataType ret_type = DataType::INVALID;
+    std::string ret_var_name;
+    std::pair<DataType, std::string> inner_exp_ret;
+
     if (type_code_ == TypeCode::LPARENT) {
         next_sym();
-        Exp();
+        inner_exp_ret = Exp();
+        ret_type = inner_exp_ret.first;
+        ret_var_name = inner_exp_ret.second;
         next_sym();
         if (type_code_ == TypeCode::RPARENT) {
             // pass
         } else {
-            handle_error("expect ) in <Primary>::= '(' Exp ')'");
+            handle_error(ErrorType::EXPECTED_PARENT);
         }
     }
     else if (type_code_ == TypeCode::IDENFR) {
-        LVal();
+        inner_exp_ret = LVal();
+        ret_type = inner_exp_ret.first;
+        ret_var_name = inner_exp_ret.second;
     }
     else if (type_code_ == TypeCode::INTCON) {
-        Number();
+        ret_type = DataType::INT;
+        int inner_value = Number();
+        ret_var_name = std::to_string(inner_value);
     }
     else {
-        handle_error("<PrimaryExp> cant match any branches");
+        handle_error("Expect a token in FIRST(PrimaryExp)");
     }
     output("<PrimaryExp>");
+    return std::make_pair(ret_type, ret_var_name);
 }
 
-// <Exp>::= <AddExp>
-void Parser::Exp() {
-    AddExp();
+// Exp -> AddExp
+std::pair<DataType, std::string> Parser::Exp() {
+    std::pair<DataType, std::string> ret = AddExp();
     output("<Exp>");
+    return ret;
 }
 
-// <LVal>::= Ident { '[' Exp ']' }
+// LVal -> Ident { '[' Exp ']' }
 // promise: already read a token
-void Parser::LVal() {
+std::pair<DataType, std::string> Parser::LVal() {
+    DataType ret_type = DataType::INT;
+    std::string ret_var_name;
+    std::string ident;
+    bool is_array = false;
+    int dims = 0;
+    std::string dim_0, dim_1;
+    std::pair<DataType, std::string> inner_exp_ret;
+
     if (type_code_ == TypeCode::IDENFR) {
+        ident = token_.get_str_value();
+        if (!symbol_table_.SearchSymbol(cur_func_name_, ident, cur_level_).first) handle_error(ErrorType::UNDECL);
         next_sym();
-        while (type_code_ == TypeCode::LBRACK) {
+        if (type_code_ == TypeCode::LBRACK) {
+            is_array = true;
+            dims += 1;
             next_sym();
-            Exp();
+            inner_exp_ret = Exp();
+            dim_0 = inner_exp_ret.second;
+            next_sym(); // read ']'
+            if (type_code_ == TypeCode::RBRACK) {
+                // pass
+            } else {
+                handle_error(ErrorType::EXPECTED_BRACK);
+            }
+            next_sym();
+        }
+
+        if (type_code_ == TypeCode::LBRACK) {
+            next_sym();
+            dims += 1;
+            inner_exp_ret = Exp();
+            dim_1 = inner_exp_ret.second;
             next_sym(); // read ']'
             if (type_code_ == TypeCode::RBRACK) {
                 // pass
@@ -474,36 +563,71 @@ void Parser::LVal() {
     } else {
         handle_error("expect Ident in <LVal>");
     }
+    // TODO
+    // fetch the value of the LVal
+    // save it to the ret_var_name
+    // if is a integer, just pass it ,
+    // else add to the mid code
     retract();
     output("<LVal>");
+    return std::make_pair(ret_type, ret_var_name);
 }
 
-void Parser::Number() {
-    IntConst();
+// Number -> IntConst
+int Parser::Number() {
+    int ret = IntConst();
     output("<Number>");
+    return ret;
 }
 
-void Parser::IntConst() {
+int Parser::IntConst() {
     // TODO
     // in fact, this func should return a integer or str
+    int ret = std::stoi(token_.get_str_value());
+    return ret;
 }
 
-// <FuncRParams>::= <Exp> { ',' <Exp> }
-// promise: already read a token
-std::vector<std::string> Parser::FuncRParams() {
-    Exp();
+// FuncRParams -> Exp { ',' Exp }
+// promise: already read a token, at least one param
+std::vector<std::string> Parser::FuncRParams(const std::string& func_name, int need_param_no) {
+    std::vector<std::string> ret_vars;
+    DataType need_param_type;
+    int cur_param_no = 0;
+    int provide_param_no = 0;
+    std::pair<DataType, std::string> inner_exp_ret;
+
+    provide_param_no += 1;
+    inner_exp_ret = Exp();
+    need_param_type = symbol_table_.GetKthParam(func_name, cur_param_no)->data_type;
+    ret_vars.push_back(inner_exp_ret.second);
+    if (inner_exp_ret.first != need_param_type)
+        handle_error(ErrorType::ARG_TYPE_MISMATCH);
     next_sym();
     while (type_code_ == TypeCode::COMMA) {
         next_sym();
-        Exp();
+        provide_param_no += 1;
+        cur_param_no += 1;
+        inner_exp_ret = Exp();
+        ret_vars.push_back(inner_exp_ret.second);
+        if (need_param_no >= provide_param_no) {
+            need_param_type = symbol_table_.GetKthParam(func_name, cur_param_no)->data_type;
+            if (inner_exp_ret.first != need_param_type)
+                handle_error(ErrorType::ARG_TYPE_MISMATCH);
+            // TODO
+            // push to stack
+        } else {
+            // pass
+        }
         next_sym();
     }
     retract();
     output("<FuncRParams>");
+    return ret_vars;
 }
 
 // <UnaryOp>::= '+' | '-' | '!'
 // promise: already read a token
+// @retval: 0 '+', 1 '-', 2 '!'
 int Parser::UnaryOp() {
     int op = -1;
     if (type_code_ == TypeCode::PLUS ||
@@ -524,20 +648,47 @@ int Parser::UnaryOp() {
     return op;
 }
 
-// <ConstInitVal>::= '{' [ ConstInitVal { ',' ConstInitVal } ] '}' |
-//               <ConstExp>
-// promise: already read a token
-void Parser::ConstInitVal() {
+// ConstInitVal -> '{' [ ConstInitVal { ',' ConstInitVal } ] '}' |
+//                  ConstExp
+// promise: 1. already read a token
+//          2. ConstExp can be parsed as an integer
+// if is an array, return a str(vector<int>)
+// if is an integer, return a str(int)
+std::pair<DataType, std::string> Parser::ConstInitVal() {
+    DataType ret_type;
+    std::string ret_value;
+    bool is_array = false;
+    std::vector<int> elements;
+    std::pair<DataType, std::string> inner_exp_ret;
+
     if (type_code_ == TypeCode::LBRACE) {
+        is_array = true;
         next_sym();
         if (type_code_ == TypeCode::RBRACE) {
-            // end
-        } else {
-            ConstInitVal();
+            // if that case, e.g. array[0] = {};
+        }
+        else {
+            inner_exp_ret = ConstInitVal();
+            if (inner_exp_ret.first == DataType::INT) {
+                elements.push_back(std::stoi(inner_exp_ret.second));
+            } else if (inner_exp_ret.first == DataType::INT_ARR){
+                std::vector<int> inner_vec = str_to_vec_int(inner_exp_ret.second);
+                elements.insert(elements.begin(), inner_vec.begin(), inner_vec.end());
+            } else {
+                handle_error("ConstInitVal return not INT not INT_ARR");
+            }
             next_sym();
             while (type_code_ == TypeCode::COMMA) {
                 next_sym();
-                ConstInitVal();
+                inner_exp_ret = ConstInitVal();
+                if (inner_exp_ret.first == DataType::INT) {
+                    elements.push_back(std::stoi(inner_exp_ret.second));
+                } else if (inner_exp_ret.first == DataType::INT_ARR){
+                    std::vector<int> inner_vec = str_to_vec_int(inner_exp_ret.second);
+                    elements.insert(elements.begin(), inner_vec.begin(), inner_vec.end());
+                } else {
+                    handle_error("ConstInitVal return not INT not INT_ARR");
+                }
                 next_sym();
             }
             if (type_code_ == TypeCode::RBRACE) {
@@ -547,13 +698,20 @@ void Parser::ConstInitVal() {
             }
         }
     } else {
-        ConstExp();
+        inner_exp_ret = ConstExp();
+        ret_type = inner_exp_ret.first;
+        ret_value = inner_exp_ret.second;
     }
     output("<ConstInitVal>");
+    if (is_array) {
+        return std::make_pair(DataType::INT_ARR, vec_int_to_str(elements));
+    } else {
+        return std::make_pair(DataType::INT, ret_value);
+    }
 }
 
 
-// <VarDecl>::= BType VarDef { ',' VarDef } ';'
+// VarDecl -> BType VarDef { ',' VarDef } ';'
 // promise: already read a token
 void Parser::VarDecl() {
     if (type_code_ == TypeCode::INTTK) {
@@ -575,26 +733,54 @@ void Parser::VarDecl() {
     }
 }
 
-// <VarDef>::= Ident { '[' ConstExp ']' } |
-//             Ident { '[' ConstExp ']' } '=' InitVal
+// VarDef -> Ident { '[' ConstExp ']' } |
+//           Ident { '[' ConstExp ']' } '=' InitVal
 // promise: already read a token
 void Parser::VarDef() {
+    name_ = token_.get_str_value();
+    bool is_array = false;
+    std::pair<DataType, std::string> inner_exp_ret;
     if (type_code_ == TypeCode::IDENFR) {
         next_sym();
-        while (type_code_ == TypeCode::LBRACK) {
+        if (type_code_ == TypeCode::LBRACK) {
+            is_array = true;
+            dims_ += 1;
             next_sym();
-            ConstExp();
+            inner_exp_ret = ConstExp();
+            dim0_size_ = std::stoi(inner_exp_ret.second);
             next_sym();
             if (type_code_ == TypeCode::RBRACK) {
                 next_sym();
             } else {
-                handle_error("expect ] at end of <VarDef>");
+                handle_error(ErrorType::EXPECTED_BRACK);
             }
         }
+
+        if (type_code_ == TypeCode::LBRACK) {
+            dims_ += 1;
+            next_sym();
+            inner_exp_ret = ConstExp();
+            dim1_size_ = std::stoi(inner_exp_ret.second);
+            next_sym();
+            if (type_code_ == TypeCode::RBRACK) {
+                next_sym();
+            } else {
+                handle_error(ErrorType::EXPECTED_BRACK);
+            }
+        }
+
+        DataType data_type = is_array? DataType::INT_ARR : DataType::INT;
+        bool add_success = symbol_table_.AddSymbol(cur_func_name_, data_type, SymbolType::VAR, name_,
+                                                   0, cur_level_, dims_, dim0_size_, dim1_size_);
+        if (!add_success) handle_error(ErrorType::REDEF);
+
         // ['=' InitVal]
         if (type_code_ == TypeCode::ASSIGN) {
             next_sym();
-            InitVal();
+            inner_exp_ret = InitVal();
+            // TODO
+            // may only one value, may a arr values
+            // use ARR_SAVE to save the values into the var arr
         } else {
             // done
             retract();
@@ -605,20 +791,45 @@ void Parser::VarDef() {
     }
 }
 
-// <InitVal>::= '{' [ InitVal { ',' InitVal } ] '}'
-//              Exp |
+// InitVal -> '{' [ InitVal { ',' InitVal } ] '}'
+//             Exp |
 // promise: already read a token
-void Parser::InitVal() {
+// @retval pair.string: a tmp_var_name or list of tmp_var_name in str
+std::pair<DataType, std::string> Parser::InitVal() {
+    DataType ret_type;
+    std::string ret_var_name;
+    std::vector<std::string> ret_var_vec;
+    bool is_array = false;
+    std::pair<DataType, std::string> inner_exp_ret;
+
     if (type_code_ == TypeCode::LBRACE) {
+        ret_type = DataType::INT_ARR;
+        is_array = true;
         next_sym();
         if ( type_code_ == TypeCode::RBRACE) {
             // end
         } else {
-            InitVal();
+            inner_exp_ret = InitVal();
+            if (inner_exp_ret.first == DataType::INT_ARR) {
+                std::vector<std::string> inner_vec = str_to_vec_str(inner_exp_ret.second);
+                ret_var_vec.insert(ret_var_vec.begin(), inner_vec.begin(), inner_vec.end());
+            } else if (inner_exp_ret.first == DataType::INT) {
+                ret_var_vec.push_back(inner_exp_ret.second);
+            } else {
+                handle_error("Not INT or INT_ARR type return from InitVal");
+            }
             next_sym();
             while (type_code_ == TypeCode::COMMA) {
                 next_sym();
-                InitVal();
+                inner_exp_ret = InitVal();
+                if (inner_exp_ret.first == DataType::INT_ARR) {
+                    std::vector<std::string> inner_vec = str_to_vec_str(inner_exp_ret.second);
+                    ret_var_vec.insert(ret_var_vec.begin(), inner_vec.begin(), inner_vec.end());
+                } else if (inner_exp_ret.first == DataType::INT) {
+                    ret_var_vec.push_back(inner_exp_ret.second);
+                } else {
+                    handle_error("Not INT or INT_ARR type return from InitVal");
+                }
                 next_sym();
             }
             // get '}' then end
@@ -629,16 +840,25 @@ void Parser::InitVal() {
             }
         }
     } else {
-        Exp();
+        inner_exp_ret = Exp();
+        ret_type = inner_exp_ret.first;
+        ret_var_name = inner_exp_ret.second;
     }
     output("<InitVal>");
+    if (is_array) {
+        return std::make_pair(ret_type, vec_str_to_str(ret_var_vec));
+    } else {
+        return std::make_pair(ret_type, ret_var_name);
+    }
 }
 
-// <FuncDef>::= FuncType Ident '(' [FuncFParams] ')' Block
+// FuncDef -> FuncType Ident '(' [FuncFParams] ')' Block
 // promise: already read a token
 void Parser::FuncDef() {
-    FuncType();
+    DataType func_type = DataType::INVALID;
+    func_type = FuncType();
     next_sym();
+    std::string func_name = token_.get_str_value();
     if (type_code_ == TypeCode::IDENFR) {
         next_sym(); // '('
         next_sym(); // ')' or 'int'
@@ -656,21 +876,23 @@ void Parser::FuncDef() {
         next_sym();
         Block();
     } else {
-        handle_error("expect Identifier in <FuncDef>");
+        handle_error("expect Identifier in FuncDef");
     }
     output("<FuncDef>");
 }
 
 // <FuncType>::= 'int' | 'void'
-void Parser::FuncType() {
+DataType Parser::FuncType() {
+    DataType ret_data_type = DataType::INVALID;
     if (type_code_ == TypeCode::VOIDTK) {
-        // pass
+        ret_data_type = DataType::VOID;
     } else if (type_code_ == TypeCode::INTTK) {
-        // pass
+        ret_data_type = DataType::INT;
     } else{
         handle_error("FuncType must be int of void");
     }
     output("<FuncType>");
+    return ret_data_type;
 }
 
 

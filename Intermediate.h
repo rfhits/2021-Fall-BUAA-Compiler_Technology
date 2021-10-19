@@ -9,7 +9,7 @@
 #include "SymbolTable.h"
 
 enum class IntermOp {
-    ADD,SUB,MUL,DIV,MOD,
+    ADD,SUB,MUL,DIV,MOD,NOT,
     GETINT,PRINT,
 
     ARR_STORE,

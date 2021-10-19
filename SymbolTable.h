@@ -12,22 +12,22 @@
 
 enum class DataType {
     INT,
-    CHAR,
+    INT_ARR,
     VOID,
-    NUM, // for ConstExpr to parse
-    INVALID};
+    INVALID
+};
 
 enum class SymbolType {CONST, VAR, FUNC, PARAM};
 
 struct TableEntry {
-    SymbolType sym_type;
+    SymbolType symbol_type;
     DataType data_type;
     std::string name;
     int value;
-    int dim0, dim1;
+    int dims, dim0_size, dim1_size;
     int addr;
     int level;
-    bool visible;
+    std::vector<int> array_values;
 };
 
 class SymbolTable {
@@ -37,12 +37,14 @@ private:
 public:
     SymbolTable();
 
-    std::pair<bool, TableEntry*> SearchVisibleSymbol(const std::string& func_name, const std::string& name, int level);
+    std::pair<bool, TableEntry*> SearchSymbol(const std::string& func_name, const std::string& name, int level);
 
     bool AddSymbol(const std::string& func_name, DataType data_type, SymbolType sym_type,
-                   const std::string& name, int value, int level=0, int dim0=0, int dim1=0);
+                   const std::string& name, int value, int level=0, int dims=0, int dim0_size=0, int dim1_size=0);
 
-    void SetVisible(const std::string& func_name, int level, bool visible);
+    bool AddConstArray(const std::string& name, int dim0, int dim1, std::vector<int> array_values);
+
+    void PopLevel(const std::string& func_name, int level, bool visible);
 
     TableEntry* GetKthParam(const std::string& func_name, int k);
 

@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <fstream>
+#include "utils.h"
 #include "ErrorHandler.h"
 #include "Lexer.h"
 #include "SymbolTable.h"
@@ -16,7 +17,19 @@ enum class ErrorType {
     A, B, C, D,
     E, F, G, H,
     I, J, K, L,
-    M
+    M,
+    REDEF, // b, redefinition
+    UNDECL, //c, undeclared variable
+    ARG_NO_MISMATCH, // d
+    ARG_TYPE_MISMATCH, // e
+    RET_TYPE_MISMATCH, // f
+    MISSING_RET, // g
+    CHANGE_CONST, // h
+    EXPECTED_SEMICN, // i
+    EXPECTED_PARENT, // j, expected  )
+    EXPECTED_BRACK, // k, expected ]
+    PRINT_NO_MISMATCH, // l
+    NOT_IN_LOOP // m
 };
 
 
@@ -34,7 +47,7 @@ private:
     std::vector<std::string> out_strings_;
 
     std::string name_;
-    int dim0_, dim1_;
+    int dims_ = 0, dim0_size_=0, dim1_size_=0;
     std::string cur_func_name_;
     int cur_level_ = 0;
     int var_size_;
@@ -54,26 +67,26 @@ private:
     void Decl();
     void ConstDecl();
     void ConstDef();
-    int ConstExp();
-    std::pair<DataType, std::string> AddExp(bool parse_const=false);
-    std::pair<DataType, std::string> MulExp(bool parse_const=false);
-    std::pair<DataType, std::string> UnaryExp(bool parse_const=false);
-    std::pair<DataType, std::string> PrimaryExp(bool parse_const=false);
-    void Exp();
-    void LVal();
-    void Number();
-    void IntConst();
-    std::vector<std::string> FuncRParams();
+    std::pair<DataType, std::string> ConstExp();
+    std::pair<DataType, std::string> AddExp();
+    std::pair<DataType, std::string> MulExp();
+    std::pair<DataType, std::string> UnaryExp();
+    std::pair<DataType, std::string> PrimaryExp();
+    std::pair<DataType, std::string> Exp();
+    std::pair<DataType, std::string> LVal();
+    int Number();
+    int IntConst();
+    std::vector<std::string> FuncRParams(const std::string& func_name, int param_num);
     int UnaryOp();
-    void ConstInitVal();
+    std::pair<DataType, std::string> ConstInitVal();
 
     void VarDecl();
     void VarDef();
-    void InitVal();
+    std::pair<DataType, std::string> InitVal();
 
 
     void FuncDef();
-    void FuncType();
+    DataType FuncType();
     void FuncFParams();
     void FuncFParam();
     void Block();
