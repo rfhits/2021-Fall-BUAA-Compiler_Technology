@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <set>
 #include "utils.h"
 #include "ErrorHandler.h"
 #include "Lexer.h"
@@ -18,6 +19,7 @@ enum class ErrorType {
     E, F, G, H,
     I, J, K, L,
     M,
+    ILLEGAL_CHAR, // a, illegal char in format string
     REDEF, // b, redefinition
     UNDECL, //c, undeclared variable
     ARG_NO_MISMATCH, // d
@@ -40,22 +42,29 @@ private:
     Intermediate& intermediate_;
     bool print_mode_;
     int pos_ = 0; // the number of the tokens been processed
-    Token token_ = Token(TYPE_UNDEFINED);
+    Token token_ = Token(TypeCode::TYPE_UNDEFINED);
     TypeCode type_code_; // the token's type_code
     std::ostream& out_; // output stream
     std::vector<Token> read_tokens_; // the tokens have been read
     std::vector<std::string> out_strings_;
 
-    std::string name_;
-    int dims_ = 0, dim0_size_=0, dim1_size_=0;
     std::string cur_func_name_;
     int cur_level_ = 0;
+    bool has_ret_stmt_ = false; // the parsing function has the return statement
+    std::vector<bool> loop_stack_ = {false}; // the last bool means whether in loop statement
+    std::string name_;
+    int dims_ = 0, dim0_size_=0, dim1_size_=0;
     int var_size_;
-    bool has_ret_;
     SymbolTable& symbol_table_;
+
+    std::set<TypeCode> first_exp = { // FIRST(<Exp>)
+            TypeCode::PLUS, TypeCode::MINU, TypeCode::NOT,
+            TypeCode::IDENFR, TypeCode::LPARENT, TypeCode::INTCON
+    };
 
 
     void next_sym(); // put a token into read_tokens
+    void reset_sym();
     void retract();
 
     void output(const std::string& str);
@@ -87,22 +96,23 @@ private:
 
     void FuncDef();
     DataType FuncType();
-    void FuncFParams();
+    int FuncFParams();
     void FuncFParam();
     void Block();
     void BlockItem();
     void Stmt();
     void AssignStmt();
     void IfStmt();
-    void Cond();
-    void LOrExp();
-    void LAndExp();
-    void EqExp();
-    void RelExp();
+    std::pair<DataType, std::string> Cond();
+    std::pair<DataType, std::string> LOrExp();
+    std::pair<DataType, std::string> LAndExp();
+    std::pair<DataType, std::string> EqExp();
+    std::pair<DataType, std::string> RelExp();
     void WhileStmt();
     void ReturnStmt();
     void ReadStmt();
     void WriteStmt();
+    std::pair<int, std::vector<std::string>> FormatString();
 
     void MainFuncDef();
 

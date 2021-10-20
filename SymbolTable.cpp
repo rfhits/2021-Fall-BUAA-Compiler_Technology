@@ -6,78 +6,135 @@
 
 SymbolTable::SymbolTable() = default;
 
-// search a visible symbol
+// @note: search a function in global table
+// @attention: func name may same as the const or variable name
+std::pair<bool, TableEntry *> SymbolTable::SearchFunc(const std::string& func_name) {
+    for (auto & entry : global_table_) {
+        if (entry.name == func_name && entry.symbol_type == SymbolType::FUNC) {
+            return std::make_pair(true, &entry);
+        } else {
+            // pass
+        }
+    }
+    return std::make_pair(false, nullptr);
+}
+
+// @brief: search a symbol in a specific scope
+// @attention: won't search the Function
+// @pre: this function is called in defining a new variable or constant,
+//       check whether exists a same name const or variable in the same scope
+// @param[in] func_name: search in  which function, if empty, in global
 //
-// in def stmt, should check if exists
-// in assign stmt, should check if
-std::pair<bool, TableEntry*> SymbolTable::SearchSymbol(
-        const std::string &func_name, const std::string &name, int level) {
+std::pair<bool, TableEntry *> SymbolTable::SearchSymbolInLevel(
+        const std::string& func_name, int level, const std::string& sym_name) {
+    if (func_name.empty()) { // it is defined in global
+        for (auto & i : global_table_) {
+            if (i.name == sym_name && (i.symbol_type!=SymbolType::FUNC)) {
+                return std::make_pair(true, &i);
+            } else {
+                // pass
+            }
+        }
+    } else { // it is defined in a function
+        auto it = func_table_.find(func_name);
+        if (it != func_table_.end()) {
+            std::vector<TableEntry>& table = it->second;
+            for (auto & i : table) {
+                if (i.name == sym_name && i.level == level) {
+                    return std::make_pair(true, &i);
+                } else {
+                    // pass
+                }
+            }
+        } else { // can't find this function
+            return std::make_pair(false, nullptr);
+        }
+    }
+    return std::make_pair(false, nullptr);
+}
+
+// @pre: the function is called when assigning or use a variable, search a symbol in the whole scope
+// @attention: do not search in function
+// @post: get the entry and judge if it is a const or if it is declared
+// @brief: search in the global table,
+//         search in the function table, if you can't find, go back to search in global
+std::pair<bool, TableEntry*> SymbolTable::SearchNearestSymbolNotFunc(
+        const std::string &func_name, const std::string &name) {
     if (func_name.empty()) {
         // search in the global table
-        auto it = global_table_.find(name);
-        if (it != global_table_.end()) {
-            return std::make_pair(true, &(it->second));
-        } else {
-            return std::make_pair(false, nullptr);
+        for (int i = 0; i < global_table_.size(); i++) {
+            if (global_table_[i].name == name && (global_table_[i].symbol_type != SymbolType::FUNC)) {
+                return std::make_pair(true, &(global_table_[i]));
+            } else {
+                // pass
+            }
         }
     }
     else {
         auto it = func_table_.find(func_name);
         if (it != func_table_.end()) {
-            // if function exists
             std::vector<TableEntry>& table = it->second;
-            for (auto & i : table) {
-                // search in this level of the vector
-                if (i.level == level) {
-                    return std::make_pair(true, &i);
+            for (unsigned long long i = table.size(); i >= 0; i--) {
+                if (table[i].name == name) {
+                    return std::make_pair(true, &(table[i]));
                 } else {
-                    continue;
+                    // pass
                 }
             }
-            return std::make_pair(false, nullptr);
-        } else {
+            // search in global table
+            return SearchSymbolInLevel("", 0, name);
+        } else { // the function does not exist
             return std::make_pair(false, nullptr);
         }
+    }
+    return std::make_pair(false, nullptr);
+}
+
+// @brief: add a func symbol to global
+// @retval: success?
+bool SymbolTable::AddFunc(DataType data_type, const std::string &func_name, int value) {
+    auto search_res = SearchFunc(func_name);
+    if (search_res.first) { // already exists
+        return false;
+    } else {
+        TableEntry entry;
+        entry.name = func_name;
+        entry.data_type = data_type;
+        entry.symbol_type = SymbolType::FUNC;
+        entry.value = value;
+        global_table_.push_back(entry);
+        return true;
     }
 }
 
-
-// add a symbol entry
-// if func_name is empty, add to global
-// else add to the func
-// promise: the func_name exists
+// @brief: called while defining a var or const
+//         add a symbol entry
+//         if func_name is empty, add to global
+//         else add to the func
+// @param[in] func_name: the scope to add the symbol
 bool SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolType sym_type,
                             const std::string &name, int value, int level, int dims, int dim0_size, int dim1_size) {
-    TableEntry table_entry;
-    table_entry.data_type = data_type;
-    table_entry.symbol_type = sym_type;
-    table_entry.name = name;
-    table_entry.value = value;
-    table_entry.level = level;
-    table_entry.dim0_size = dim0_size;
-    table_entry.dim1_size = dim1_size;
-    if (func_name.empty()) {
-        // add to global
-        if (global_table_.count(name) != 0) {
+    if (sym_type == SymbolType::FUNC) {
+        return AddFunc(data_type, func_name, value);
+    } else { // add a variable or const
+        if (SearchSymbolInLevel(func_name, level, name).first) { // already exists in the same scope
             return false;
         } else {
-            global_table_[name] = table_entry;
-            if (sym_type==SymbolType::FUNC) {
-                func_table_[name] = std::vector<TableEntry>();
+            TableEntry table_entry;
+            table_entry.data_type = data_type;
+            table_entry.symbol_type = sym_type;
+            table_entry.name = name;
+            table_entry.value = value;
+            table_entry.level = level;
+            table_entry.dims = dims;
+            table_entry.dim0_size = dim0_size;
+            table_entry.dim1_size = dim1_size;
+            if (func_name.empty()) {
+                global_table_.push_back(table_entry);
+            } else {
+                auto& it = func_table_[func_name];
+                it.push_back(table_entry);
             }
-            return true;
-        }
-    }
-    else {
-        // search in the table of func table
-        // if in the same level and visible, return false
-        std::pair<bool, TableEntry*> res = SearchSymbol(func_name, name, level);
-        if (res.first) {
-            // find a same name symbol in the same level
-            return false;
-        } else {
-            // add to the func table
-            func_table_[func_name].push_back(table_entry);
             return true;
         }
     }
@@ -85,8 +142,8 @@ bool SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, Sy
 
 // after passing a block in function,
 // need to set the var in the block to invisible
-// promise: the func_table exists
-void SymbolTable::PopLevel(const std::string& func_name, int level, bool visible) {
+// @pre: the func_table exists
+void SymbolTable::PopLevel(const std::string& func_name, int level) {
     std::vector<TableEntry>& entry_table = func_table_[func_name];
     auto it = entry_table.begin();
     while (it != entry_table.end()) {
@@ -98,7 +155,7 @@ void SymbolTable::PopLevel(const std::string& func_name, int level, bool visible
     }
 }
 
-// count from 0
+// @attention: count from 0
 TableEntry* SymbolTable::GetKthParam(const std::string& func_name, int k) {
     for (auto &item : func_table_[func_name]) {
         if (item.symbol_type == SymbolType::PARAM && item.value == k) {
@@ -110,9 +167,9 @@ TableEntry* SymbolTable::GetKthParam(const std::string& func_name, int k) {
 
 // add a const array into global table
 // if success, return true
-bool SymbolTable::AddConstArray(const std::string &name, int dim0, int dim1,
+bool SymbolTable::AddConstArray(const std::string& name, int dim0, int dim1,
                                 std::vector<int> array_values) {
-    if (global_table_.count(name) != 0) {
+    if (SearchSymbolInLevel("", 0, name).first) {
         return false;
     } else {
         TableEntry table_entry;
@@ -123,7 +180,12 @@ bool SymbolTable::AddConstArray(const std::string &name, int dim0, int dim1,
         table_entry.dim1_size = dim1;
         table_entry.level = 0;
         table_entry.array_values = std::move(array_values);
-        global_table_[name] = table_entry;
+        global_table_.push_back(table_entry);
         return true;
     }
 }
+
+
+
+
+

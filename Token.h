@@ -11,7 +11,7 @@
 
 //using namespace std;
 
-enum TypeCode {
+enum class TypeCode {
     TYPE_UNDEFINED, TYPE_EOF,
     IDENFR, INTCON, STRCON, MAINTK,CONSTTK,
     INTTK, BREAKTK, CONTINUETK, IFTK,
@@ -25,18 +25,18 @@ enum TypeCode {
 };
 
 const std::map<std::string, TypeCode> reserved_word2type_code = {
-        {"main", MAINTK},
-        {"const", CONSTTK},
-        {"int", INTTK},
-        {"break", BREAKTK},
-        {"continue", CONTINUETK},
-        {"if", IFTK},
-        {"else", ELSETK},
-        {"while", WHILETK},
-        {"getint", GETINTTK},
-        {"printf", PRINTFTK},
-        {"return", RETURNTK},
-        {"void", VOIDTK},
+        {"main", TypeCode::MAINTK},
+        {"const", TypeCode::CONSTTK},
+        {"int", TypeCode::INTTK},
+        {"break", TypeCode::BREAKTK},
+        {"continue", TypeCode::CONTINUETK},
+        {"if", TypeCode::IFTK},
+        {"else", TypeCode::ELSETK},
+        {"while", TypeCode::WHILETK},
+        {"getint", TypeCode::GETINTTK},
+        {"printf", TypeCode::PRINTFTK},
+        {"return", TypeCode::RETURNTK},
+        {"void", TypeCode::VOIDTK},
 };
 
 
@@ -100,15 +100,11 @@ const std::map<TypeCode, std::string> type_code2str = {
 
 class Token {
 private:
-    TypeCode type_code_ = TYPE_UNDEFINED; //类别码
-
+    TypeCode type_code_ = TypeCode::TYPE_UNDEFINED; //类别码
     // if token is a string, store value
     // identifier: the name
     std::string str_value_;
-
-
     int int_value_ ;
-
     int line_no_; // token appears in this line
 
 public:

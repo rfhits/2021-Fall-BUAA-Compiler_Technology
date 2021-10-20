@@ -9,7 +9,9 @@
 #include "SymbolTable.h"
 
 enum class IntermOp {
-    ADD,SUB,MUL,DIV,MOD,NOT,
+    ADD,SUB,MUL,DIV,MOD,
+    AND, OR, NOT, EQ, NEQ,
+    LSS, LEQ, GRE, GEQ,
     GETINT,PRINT,
 
     ARR_STORE,
