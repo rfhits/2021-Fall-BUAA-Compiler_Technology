@@ -3,4 +3,8 @@
 cmake-build-debug
 CMakeLists.txt
 
+testfile.txt
+output.txt
+error.txt
+
 *.zip
