@@ -19,11 +19,10 @@ public:
 
     // log error to out stream with a line number
     void log_error(int line_no, const std::string& msg) {
-        out_ << "error at " << line_no << " line: ";
-        out_ << msg << std::endl;
+        out_ << line_no << " " << msg << std::endl;
     }
 
-    // log error to out stream with a line number
+    // @brief: output a message to error stream
     void log_error(const std::string& msg) {
         out_ << msg << std::endl;
     }

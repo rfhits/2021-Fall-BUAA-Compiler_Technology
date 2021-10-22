@@ -9,16 +9,32 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <map>
 #include "ErrorHandler.h"
 
 enum class DataType {
+    INVALID,
     INT,
     INT_ARR,
-    VOID,
-    INVALID
+    VOID
 };
 
 enum class SymbolType {CONST, VAR, FUNC, PARAM};
+
+const std::map<DataType, std::string> data_type_to_str = {
+        {DataType::INT, "int"},
+        {DataType::INT_ARR, "int_arr"},
+        {DataType::VOID, "void"},
+        {DataType::INVALID, "invalid"}
+};
+
+
+const std::map<SymbolType, std::string> symbol_type_to_str = {
+        {SymbolType::CONST, "const"},
+        {SymbolType::VAR, "var"},
+        {SymbolType::FUNC, "func"},
+        {SymbolType::PARAM, "param"}
+};
 
 struct TableEntry {
     SymbolType symbol_type;
@@ -34,7 +50,7 @@ struct TableEntry {
 class SymbolTable {
 private:
     std::vector<TableEntry> global_table_;
-    std::unordered_map<std::string, std::vector<TableEntry>> func_table_;
+    std::unordered_map<std::string, std::vector<TableEntry>> func_tables_;
 public:
     SymbolTable();
 
@@ -42,14 +58,15 @@ public:
     std::pair<bool, TableEntry*> SearchSymbolInLevel(const std::string& func_name, int level, const std::string& sym_name);
     std::pair<bool, TableEntry*> SearchNearestSymbolNotFunc(const std::string& func_name, const std::string& name);
 
+    std::string entry_to_string(TableEntry* entry);
+    void show_table();
+
     bool AddFunc(DataType data_type,const std::string& func_name, int value);
 
     bool AddSymbol(const std::string& func_name, DataType data_type, SymbolType sym_type,
                    const std::string& name, int value, int level, int dims, int dim0_size, int dim1_size);
 
     bool AddConstArray(const std::string& name, int dim0, int dim1, std::vector<int> array_values);
-
-
 
     void PopLevel(const std::string& func_name, int level);
 

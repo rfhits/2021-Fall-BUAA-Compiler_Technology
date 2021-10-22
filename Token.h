@@ -122,6 +122,8 @@ public:
     int get_line_no() const {
         return line_no_;
     }
+
+    void set_line_no(int line_no);
     void set_type_code(TypeCode type_code);
     void set_str_value(std::string& str_value);
     std::string to_string();

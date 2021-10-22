@@ -15,4 +15,13 @@ keywords: BUAA 北航 编译 编译器
 
 ## 仓库描述
 
+### 分支
 
+#### lexer
+
+词法分析，有bug，get_token最后没有更新token的行号。
+
+### 遗留bug
+  + lexer: get_token最后没有更新token的行号，此bug在handle_error中解决
+  + parser: 一个分号和逗号搞反了，此bug在handle_error中解决
+  

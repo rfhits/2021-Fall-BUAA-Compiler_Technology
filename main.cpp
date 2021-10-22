@@ -5,25 +5,25 @@
 #include "Parser.h"
 
 int main() {
-    string testfile_path = "testfile.txt";
-    string output_path = "output.txt";
-    string error_out_path = "error.txt";
-    vector<string> output_str;
+    std::string testfile_path = "testfile.txt";
+    std::string output_path = "output.txt";
+    std::string error_out_path = "error.txt";
+    std::vector<std::string> output_str;
 
-    ifstream in_stream(testfile_path);
-    stringstream ss;
+    std::ifstream in_stream(testfile_path);
+    std::stringstream ss;
     ss << in_stream.rdbuf();
     in_stream.close();
-    ofstream out(output_path);
-    ofstream error_out(error_out_path);
+    std::ofstream out(output_path);
+    std::ofstream error_out(error_out_path);
     ErrorHandler error_handler(error_out);
 //    ErrorHandler error_handler(std::cerr);
     Lexer lexer(ss.str(), error_handler);
     lexer.uncomment();
 
     SymbolTable symbol_table;
-
-    Parser parser(lexer, symbol_table,error_handler, true, out);
+    Intermediate interm(symbol_table, out);
+    Parser parser( symbol_table,lexer,error_handler, interm, true, out);
     parser.Program();
 
     out.close();

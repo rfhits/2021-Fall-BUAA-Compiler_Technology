@@ -11,7 +11,7 @@ Intermediate::Intermediate(SymbolTable &symbol_table, std::ofstream &out):symbol
 // generate temp variable into symbol_table
 std::string Intermediate::GenTmpVar(const std::string &func_name, DataType data_type, int level) {
     std::string name = "Tmp_Variable_Prefix" + std::to_string(tmp_cnt_++);
-    symbol_table_.AddSymbol(func_name, data_type, SymbolType::VAR,name, 0, level);
+    symbol_table_.AddSymbol(func_name, data_type, SymbolType::VAR,name, 0, level, 0, 0, 0);
     return name;
 }
 

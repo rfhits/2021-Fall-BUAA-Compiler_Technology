@@ -2,7 +2,6 @@
 // Created by WYSJ6174 on 2021/9/24.
 //
 
-#include <wsman.h>
 #include "Lexer.h"
 #include "ErrorHandler.h"
 
@@ -214,8 +213,8 @@ Token Lexer::get_token() {
     else {
         handle_error("ch_ can't match any char ");
     }
+    r_token.set_line_no(line_no_);
     r_token.set_str_value(str_token_);
     r_token.set_type_code(type_code);
-
     return r_token;
 }

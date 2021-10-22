@@ -36,8 +36,8 @@ std::pair<bool, TableEntry *> SymbolTable::SearchSymbolInLevel(
             }
         }
     } else { // it is defined in a function
-        auto it = func_table_.find(func_name);
-        if (it != func_table_.end()) {
+        auto it = func_tables_.find(func_name);
+        if (it != func_tables_.end()) {
             std::vector<TableEntry>& table = it->second;
             for (auto & i : table) {
                 if (i.name == sym_name && i.level == level) {
@@ -62,7 +62,7 @@ std::pair<bool, TableEntry*> SymbolTable::SearchNearestSymbolNotFunc(
         const std::string &func_name, const std::string &name) {
     if (func_name.empty()) {
         // search in the global table
-        for (int i = 0; i < global_table_.size(); i++) {
+        for (unsigned long long i = 0; i < global_table_.size(); i++) {
             if (global_table_[i].name == name && (global_table_[i].symbol_type != SymbolType::FUNC)) {
                 return std::make_pair(true, &(global_table_[i]));
             } else {
@@ -71,10 +71,10 @@ std::pair<bool, TableEntry*> SymbolTable::SearchNearestSymbolNotFunc(
         }
     }
     else {
-        auto it = func_table_.find(func_name);
-        if (it != func_table_.end()) {
+        auto it = func_tables_.find(func_name);
+        if (it != func_tables_.end()) {
             std::vector<TableEntry>& table = it->second;
-            for (unsigned long long i = table.size(); i >= 0; i--) {
+            for (long long i = table.size() -1; i >= 0; i--) {
                 if (table[i].name == name) {
                     return std::make_pair(true, &(table[i]));
                 } else {
@@ -103,6 +103,8 @@ bool SymbolTable::AddFunc(DataType data_type, const std::string &func_name, int 
         entry.symbol_type = SymbolType::FUNC;
         entry.value = value;
         global_table_.push_back(entry);
+        std::vector<TableEntry> func_table;
+        func_tables_[func_name] = func_table;
         return true;
     }
 }
@@ -132,19 +134,20 @@ bool SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, Sy
             if (func_name.empty()) {
                 global_table_.push_back(table_entry);
             } else {
-                auto& it = func_table_[func_name];
+                auto& it = func_tables_[func_name];
                 it.push_back(table_entry);
             }
             return true;
         }
     }
+    show_table();
 }
 
-// after passing a block in function,
-// need to set the var in the block to invisible
+// @brief: pop the table entry of certain level
+// @pre: this function is called after parsing a block inside function body
 // @pre: the func_table exists
 void SymbolTable::PopLevel(const std::string& func_name, int level) {
-    std::vector<TableEntry>& entry_table = func_table_[func_name];
+    std::vector<TableEntry>& entry_table = func_tables_[func_name];
     auto it = entry_table.begin();
     while (it != entry_table.end()) {
         if (it->level == level) {
@@ -157,7 +160,7 @@ void SymbolTable::PopLevel(const std::string& func_name, int level) {
 
 // @attention: count from 0
 TableEntry* SymbolTable::GetKthParam(const std::string& func_name, int k) {
-    for (auto &item : func_table_[func_name]) {
+    for (auto &item : func_tables_[func_name]) {
         if (item.symbol_type == SymbolType::PARAM && item.value == k) {
             return &item;
         }
@@ -185,7 +188,27 @@ bool SymbolTable::AddConstArray(const std::string& name, int dim0, int dim1,
     }
 }
 
+void SymbolTable::show_table() {
+    std::cout<< "symbol table" << std::endl;
+    std::cout << "global_table: " << std::endl;
+    for (int i = 0; i < global_table_.size(); i++) {
+        std::cout << entry_to_string(&global_table_[i]) << std::endl;
+    }
 
+}
 
-
-
+std::string SymbolTable::entry_to_string(TableEntry* entry) {
+    std::string str;
+    str += symbol_type_to_str.find(entry->symbol_type)->second;
+    str += " | ";
+    str += data_type_to_str.find(entry->data_type)->second;
+    str += " | ";
+    str += entry->name;
+    str += " | ";
+    str += std::to_string(entry->value);
+    str += " | ";
+    str += std::to_string(entry->dims);
+    str += " | ";
+    str += std::to_string(entry->level);
+    return str;
+}
