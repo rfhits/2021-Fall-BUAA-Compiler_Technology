@@ -68,12 +68,15 @@ private:
     std::ostream& out_; // output stream
     std::vector<Token> read_tokens_; // the tokens have been read
     std::vector<std::string> out_strings_;
+    std::vector<std::pair<int, ErrorType>> errors;
+    void output_error();
 
     std::string cur_func_name_;
     int cur_level_ = 0;
     bool has_ret_stmt_ = false; // the parsing function has the return statement
     std::vector<bool> loop_stack_ = {false}; // the last bool means whether in loop statement
     int redef_func_no_ = 0; // redefinition occurs, self plus, give the func a nickname
+    int undef_name_no_ = 0;
     std::string name_;
     int dims_ = 0, dim0_size_=0, dim1_size_=0;
     int var_size_;
@@ -92,8 +95,8 @@ private:
 
     void output(const std::string& str);
     void handle_error(const std::string& msg);
-    void handle_error(ErrorType errorType, int line_no);
-    void handle_error(ErrorType error_type);
+    void add_error(int line_no, ErrorType error_type);
+    void add_error(ErrorType error_type);
 
 
     BlockItemType Decl();
@@ -108,7 +111,7 @@ private:
     std::pair<DataType, std::string> LVal();
     int Number();
     int IntConst();
-    std::vector<std::string> FuncRParams(const std::string& func_name, int param_num);
+    std::vector<std::pair<DataType, std::string>> FuncRParams();
     int UnaryOp();
     std::pair<DataType, std::string> ConstInitVal();
 
@@ -124,7 +127,7 @@ private:
     std::vector<BlockItemType> Block();
     BlockItemType BlockItem();
     BlockItemType Stmt();
-    void AssignStmt();
+    void AssignStmt(int line_no, std::string assigned_var_name, std::pair<DataType, std::string> lval_ret);
     void IfStmt();
     std::pair<DataType, std::string> Cond();
     std::pair<DataType, std::string> LOrExp();
@@ -133,7 +136,7 @@ private:
     std::pair<DataType, std::string> RelExp();
     void WhileStmt();
     void ReturnStmt();
-    void ReadStmt();
+    void ReadStmt(const std::string& assigned_var_name, std::pair<DataType, std::string> lval_ret);
     void WriteStmt();
     std::pair<int, std::vector<std::string>> FormatString();
 

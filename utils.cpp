@@ -124,3 +124,21 @@ std::string vec_str_to_str(const std::vector<std::string>& vec) {
     str += "}";
     return str;
 }
+
+//字符串中子串出现次数
+int get_substr_no(const std::string& str, const std::string& sub) {
+    int index = 0;	//下标
+    int count = 0;	//次数
+
+    //b.find(a);这句代码的意思就是从b字符串中查找a字符串
+    //返回值的类型为int类型，返回的是字符串的下标
+    //如果没找到，返回一个特别的标志c++中用npos表示，string::npos很大的一个数，转成int值是-1
+    //
+
+    while( (index=str.find(sub,index)) < str.length() ){
+        count++;
+        index++;
+    }
+
+    return count;
+}

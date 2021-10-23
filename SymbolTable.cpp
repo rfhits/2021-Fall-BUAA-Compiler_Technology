@@ -170,9 +170,9 @@ TableEntry* SymbolTable::GetKthParam(const std::string& func_name, int k) {
 
 // add a const array into global table
 // if success, return true
-bool SymbolTable::AddConstArray(const std::string& name, int dim0, int dim1,
+bool SymbolTable::AddConstArray(std::string func_name, const std::string& name, int level, int dim0, int dim1,
                                 std::vector<int> array_values) {
-    if (SearchSymbolInLevel("", 0, name).first) {
+    if (SearchNearestSymbolNotFunc(func_name, name).first) {
         return false;
     } else {
         TableEntry table_entry;
@@ -181,7 +181,7 @@ bool SymbolTable::AddConstArray(const std::string& name, int dim0, int dim1,
         table_entry.name = name;
         table_entry.dim0_size = dim0;
         table_entry.dim1_size = dim1;
-        table_entry.level = 0;
+        table_entry.level = level;
         table_entry.array_values = std::move(array_values);
         global_table_.push_back(table_entry);
         return true;

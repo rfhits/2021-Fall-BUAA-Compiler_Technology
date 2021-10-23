@@ -12,7 +12,7 @@ Lexer::Lexer(std::string &&source, ErrorHandler& error_handler):
 
 
 void Lexer::handle_error(const std::string& msg) {
-    error_handler_.log_error(line_no_, msg);
+    error_handler_.log_error_with_line_no(line_no_, msg);
 }
 
 

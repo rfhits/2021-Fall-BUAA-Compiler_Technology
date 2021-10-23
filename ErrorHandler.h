@@ -18,8 +18,12 @@ public:
     explicit ErrorHandler(std::ofstream &out): out_(out){}
 
     // log error to out stream with a line number
-    void log_error(int line_no, const std::string& msg) {
-        out_ << line_no << " " << msg << std::endl;
+    void log_error_with_line_no(int line_no, const std::string& msg) {
+        std::string log_msg;
+        log_msg += std::to_string(line_no);
+        log_msg += " ";
+        log_msg += msg;
+        out_ << log_msg << std::endl;
     }
 
     // @brief: output a message to error stream

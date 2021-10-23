@@ -20,6 +20,7 @@ keywords: BUAA 北航 编译 编译器
 #### lexer
 
 词法分析，有bug，get_token最后没有更新token的行号。
+语法分析，错误处理的预留接口有问题，应当是突然insert一个if(not expected)，而不是发生错误就不处理了
 
 ### 遗留bug
   + lexer: get_token最后没有更新token的行号，此bug在handle_error中解决

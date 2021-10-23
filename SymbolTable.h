@@ -66,11 +66,13 @@ public:
     bool AddSymbol(const std::string& func_name, DataType data_type, SymbolType sym_type,
                    const std::string& name, int value, int level, int dims, int dim0_size, int dim1_size);
 
-    bool AddConstArray(const std::string& name, int dim0, int dim1, std::vector<int> array_values);
+    bool AddConstArray(std::string func_name, const std::string& name, int level, int dim0, int dim1, std::vector<int> array_values);
 
     void PopLevel(const std::string& func_name, int level);
 
     TableEntry* GetKthParam(const std::string& func_name, int k);
+
+    bool const_replace();
 
 };
 

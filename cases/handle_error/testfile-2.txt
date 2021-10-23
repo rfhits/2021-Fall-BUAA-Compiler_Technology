@@ -1,0 +1,22 @@
+void f1() {
+    return
+}
+
+void f2() {
+    int a = 0;
+    a
+    a = 1;
+}
+
+void f3(int a[][3]) {
+
+}
+
+void f4() {
+    int a[2][2];
+    f3(a);
+}
+
+int main() {
+    return 0;
+}
