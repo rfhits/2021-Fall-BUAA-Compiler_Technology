@@ -8,3 +8,7 @@ output.txt
 error.txt
 
 *.zip
+
+# personal document
+设计文档.pdf
+设计文档.md

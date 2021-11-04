@@ -43,6 +43,7 @@ private:
 public:
     Intermediate(SymbolTable& symbol_table, std::ofstream& out);
     std::string GenTmpVar(const std::string& func_name, DataType data_type, int level);
+    std::string GenTmpArrVar(const std::string &func_name, DataType data_type, int level, int dims, int dim0_size, int dim1_size) ;
     void AddMidCode(const std::string& dst, IntermOp op, const std::string& src1, const std::string& src2);
 };
 

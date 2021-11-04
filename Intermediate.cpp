@@ -15,6 +15,15 @@ std::string Intermediate::GenTmpVar(const std::string &func_name, DataType data_
     return name;
 }
 
+// generate tmp variable into symbol table
+std::string Intermediate::GenTmpArrVar(const std::string &func_name, DataType data_type,
+                                    int level, int dims, int dim0_size, int dim1_size) {
+    std::string name = "Tmp_Variable_Prefix" + std::to_string(tmp_cnt_++);
+    symbol_table_.AddSymbol(func_name, data_type, SymbolType::VAR,name, 0, level, dims, dim0_size, dim1_size);
+    return name;
+}
+
+
 void Intermediate::AddMidCode(const std::string& dst, IntermOp op, const std::string& src1, const std::string& src2) {
     IntermCode interm_code;
     interm_code.dst = dst;

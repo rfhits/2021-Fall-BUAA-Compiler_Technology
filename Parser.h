@@ -111,6 +111,7 @@ private:
     std::pair<DataType, std::string> LVal();
     int Number();
     int IntConst();
+    std::pair<DataType, std::string> CallFunc();
     std::vector<std::pair<DataType, std::string>> FuncRParams();
     int UnaryOp();
     std::pair<DataType, std::string> ConstInitVal();
