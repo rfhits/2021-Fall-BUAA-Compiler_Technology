@@ -40,10 +40,12 @@ struct TableEntry {
     SymbolType symbol_type;
     DataType data_type;
     std::string name;
+    std::string alias;
     int value; // const: its int value, func: its param number
     int dims, dim0_size, dim1_size;
-    int addr;
     int level;
+    unsigned int addr;
+    int size;
     std::vector<int> array_values; // array const
 };
 
@@ -51,6 +53,7 @@ class SymbolTable {
 private:
     std::vector<TableEntry> global_table_;
     std::unordered_map<std::string, std::vector<TableEntry>> func_tables_;
+
 public:
     SymbolTable();
 
@@ -64,9 +67,11 @@ public:
     bool AddFunc(DataType data_type,const std::string& func_name, int value);
 
     bool AddSymbol(const std::string& func_name, DataType data_type, SymbolType sym_type,
-                   const std::string& name, int value, int level, int dims, int dim0_size, int dim1_size);
+                   const std::string& name, const std::string& alias,
+                   int value, int level, int dims, int dim0_size, int dim1_size, unsigned int addr);
 
-    bool AddConstArray(std::string func_name, const std::string& name, int level, int dim0, int dim1, std::vector<int> array_values);
+    bool AddConstArray(const std::string& func_name, const std::string& name, const std::string& alias,
+                       int level, int dim0, int dim1, std::vector<int> array_values, unsigned int addr);
 
     void PopLevel(const std::string& func_name, int level);
 

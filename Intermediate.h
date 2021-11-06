@@ -9,19 +9,21 @@
 #include "SymbolTable.h"
 
 enum class IntermOp {
-    ADD,SUB,MUL,DIV,MOD,
+    ADD, SUB, MUL, DIV, MOD,
     AND, OR, NOT, EQ, NEQ,
     LSS, LEQ, GRE, GEQ,
-    GETINT,PRINT,
+    GETINT, PRINT,
 
-    ARR_STORE,
-    ARR_LOAD,
+    ARR_SAVE, // save to array
+    ARR_LOAD, // load from array
 
-    BEQ,BNE,BGT,BGE,BLT,BLE,
+    BEQ, BNE, BGT, BGE, BLT, BLE,
 
-    FUNC_BEGIN,FUNC_END,PUSH,CALL,RET,
+    FUNC_BEGIN, FUNC_END,
+    PREPARE_CALL, PUSH_VAL, PUSH_ARR, CALL, RET,
 
-    GOTO,LABEL,EXIT
+
+    GOTO, LABEL, EXIT
 };
 
 struct IntermCode {
@@ -34,17 +36,27 @@ struct IntermCode {
 
 class Intermediate {
 private:
-    int tmp_cnt_=0; // how many tmp vars have been generated
-    int label_cnt_=0; // how many labels have been generated
+    int tmp_cnt_ = 0; // how many tmp vars have been generated
+    int label_cnt_ = 0; // how many labels have been generated
     std::vector<IntermCode> interm_codes;
-    SymbolTable& symbol_table_;
-    std::ofstream& out_;
+    SymbolTable &symbol_table_;
+    std::ofstream &out_;
 
 public:
-    Intermediate(SymbolTable& symbol_table, std::ofstream& out);
-    std::string GenTmpVar(const std::string& func_name, DataType data_type, int level);
-    std::string GenTmpArrVar(const std::string &func_name, DataType data_type, int level, int dims, int dim0_size, int dim1_size) ;
-    void AddMidCode(const std::string& dst, IntermOp op, const std::string& src1, const std::string& src2);
+    Intermediate(SymbolTable &symbol_table, std::ofstream &out);
+
+    std::string GenTmpVar(const std::string &func_name, DataType data_type, int level, unsigned int addr);
+
+    std::string GenTmpArr(const std::string &func_name, DataType data_type, int level,
+                          int dims, int dim0_size, int dim1_size, unsigned int addr);
+
+    void AddMidCode(const std::string &dst, IntermOp op, const std::string &src1, const std::string &src2);
+
+    void AddMidCode(const std::string &dst, IntermOp op, int src1, const std::string &src2);
+
+    void AddMidCode(const std::string &dst, IntermOp op, const std::string &src1, int src2);
+
+    void AddMidCode(const std::string &dst, IntermOp op, int src1, int src2);
 };
 
 #endif //INC_2021_FALL_BUAA_COMPILER_TECHNOLOGY_INTERMEDIATE_H

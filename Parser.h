@@ -78,8 +78,10 @@ private:
     int redef_func_no_ = 0; // redefinition occurs, self plus, give the func a nickname
     int undef_name_no_ = 0;
     std::string name_;
+    std::string alias_;
     int dims_ = 0, dim0_size_=0, dim1_size_=0;
     int var_size_;
+    unsigned int local_addr_ = 100;
     SymbolTable& symbol_table_;
 
     std::set<TypeCode> first_exp = { // FIRST(<Exp>)
