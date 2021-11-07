@@ -19,10 +19,10 @@ std::pair<bool, TableEntry *> SymbolTable::SearchFunc(const std::string &func_na
     return std::make_pair(false, nullptr);
 }
 
-// @brief: search a symbol in a specific scope
-// @attention: won't search the Function
-// @pre: this function is called in defining a new variable or constant,
-//       check whether exists a same name const or variable in the same scope
+// @brief: this function is called when defining a variable or constant,
+//       check whether exists a same name const or variable in the same scope,
+//       so it will search a symbol in a specific scope
+// @attention: won't search the Function Name
 // @param[in] func_name: search in  which function, if empty, in global
 std::pair<bool, TableEntry *> SymbolTable::SearchSymbolInLevel(
         const std::string &func_name, int level, const std::string &sym_name) {
@@ -186,9 +186,8 @@ std::string SymbolTable::entry_to_string(TableEntry *entry) {
 }
 
 
-// @brief: called while defining a var or const
-//         add a symbol entry
-//         if func_name is empty, add to global
+// @brief: called while defining a var or const,
+//         if func_name is empty, add to global,
 //         else add to the func
 // @param[in] func_name: the scope to add the symbol
 bool

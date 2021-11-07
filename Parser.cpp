@@ -137,12 +137,14 @@ void Parser::Program() {
     // {FuncDef}
     while (type_code_ == TypeCode::VOIDTK || type_code_ == TypeCode::INTTK) {
         if (type_code_ == TypeCode::VOIDTK) {
+            local_addr_ = local_addr_init;
             FuncDef();
             next_sym();
         } else { // must be 'int'
             next_sym();
             if (type_code_ == TypeCode::IDENFR) {
                 retract();
+                local_addr_ = local_addr_init;
                 FuncDef();
                 next_sym();
             } else {
@@ -154,11 +156,11 @@ void Parser::Program() {
 
     // MainDef
     if (type_code_ == TypeCode::INTTK) {
+        local_addr_ = local_addr_init;
         MainFuncDef();
     } else {
         handle_error("expect 'int' head of MainFuncDef");
     }
-
 
     out_strings_.emplace_back("<CompUnit>");
     if (print_mode_) {
@@ -271,8 +273,6 @@ void Parser::ConstDef() {
                                          parsed_int_arr, local_addr_)) {
             add_error(id_line_no, ErrorType::REDEF);
         }
-        // TODO
-        // save to the mid-code
         int length = (dims_ == 2) ? dim0_size_ : dim0_size_ * dim1_size_;
         for (int i = 0; i < length; i++) {
             intermediate_.AddMidCode(alias_, IntermOp::ARR_SAVE, i, parsed_int_arr[i]);
@@ -288,7 +288,7 @@ void Parser::ConstDef() {
 // @brief: try to parse an integer out
 // @retval: return an integer in string as the second of pair
 std::pair<DataType, std::string> Parser::ConstExp() {
-    int ret_int_value=0;
+    int ret_int_value = 0;
     std::pair<DataType, std::string> add_exp_ret = AddExp();
     if (is_integer(add_exp_ret.second)) {
         ret_int_value = std::stoi(add_exp_ret.second);
@@ -459,21 +459,23 @@ std::pair<DataType, std::string> Parser::UnaryExp() {
             if (op_no == 0) { // +
                 // no change to final return var name, it is in inner_exp_ret
             } else if (op_no == 1) {  // -
-                std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_, local_addr_);
+                std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_,
+                                                                   local_addr_);
                 local_addr_ += 4;
                 intermediate_.AddMidCode(temp_var_name, IntermOp::SUB, "0", inner_exp_ret.second);
                 ret_var_name = temp_var_name;
             } else {
-                std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_, local_addr_);
+                std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_,
+                                                                   local_addr_);
                 local_addr_ += 4;
                 intermediate_.AddMidCode(temp_var_name, IntermOp::NOT, inner_exp_ret.second, "");
                 ret_var_name = temp_var_name;
             }
         }
     }
-    // Ident '(' [FuncRParams] ')'
-    // Ident { '[' Exp ']' } may occur in Primary Expression
-    // promise: parse const won't go into this branch
+        // Ident '(' [FuncRParams] ')'
+        // Ident { '[' Exp ']' } may occur in Primary Expression
+        // promise: parse const won't go into this branch
     else if (type_code_ == TypeCode::IDENFR) {
         std::string called_func_name = token_.get_str_value();
         next_sym();
@@ -483,7 +485,7 @@ std::pair<DataType, std::string> Parser::UnaryExp() {
             ret_type = inner_exp_ret.first;
             ret_var_name = inner_exp_ret.second;
         }
-        // only one branch left
+            // only one branch left
         else {
             retract();
             inner_exp_ret = PrimaryExp(); // will go to LVal
@@ -594,7 +596,7 @@ std::pair<DataType, std::string> Parser::LVal() {
         retract();
     }
 
-    std::pair<bool, TableEntry*> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, ident);
+    std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, ident);
     TableEntry *entry_ptr = search_res.second;
     if (!search_res.first) {
         add_error(ErrorType::UNDECL);
@@ -626,7 +628,7 @@ std::pair<DataType, std::string> Parser::LVal() {
                 ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
                                                        cur_level_, 2, 0, 0, local_addr_);
                 int length = entry_ptr->dim0_size * entry_ptr->dim1_size;
-                local_addr_ +=  length * 4;
+                local_addr_ += length * 4;
                 for (int i = 0; i < length; i++) {
                     std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
                     local_addr_ += 4;
@@ -656,7 +658,8 @@ std::pair<DataType, std::string> Parser::LVal() {
                 int length = entry_ptr->dim1_size * 4;
                 local_addr_ += length;
                 for (int i = 0; i < length; i++) {
-                    std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+                    std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
+                                                                        local_addr_);
                     local_addr_ += 4;
                     intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, i);
                     intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp_arr_value);
@@ -729,8 +732,7 @@ std::pair<DataType, std::string> Parser::CallFunc() {
         next_sym();
         if (type_code_ == TypeCode::RPARENT) { // no params
             if (need_param_num != 0) add_error(func_name_line, ErrorType::ARG_NO_MISMATCH);
-        }
-        else { // call has params function
+        } else { // call has params function
             // (
             // ( P
             // ( P )
@@ -974,7 +976,7 @@ void Parser::VarDef() {
                                                    0, cur_level_, dims_, dim0_size_, dim1_size_, local_addr_);
         if (!is_array) {
             local_addr_ += 4;
-        } else if (dims_ == 1){
+        } else if (dims_ == 1) {
             local_addr_ += (dim0_size_ * 4);
         } else {
             local_addr_ += (dim0_size_ * dim1_size_ * 4);
@@ -1071,10 +1073,11 @@ void Parser::FuncDef() {
     DataType func_type = DataType::INVALID;
     int param_no = 0;
     int func_name_line_no;
+    std::string func_name;
 
     func_type = FuncType();
     next_sym();
-    cur_func_name_ = token_.get_str_value();
+    func_name = cur_func_name_ = token_.get_str_value();
     func_name_line_no = token_.get_line_no();
     intermediate_.AddMidCode(cur_func_name_, IntermOp::FUNC_BEGIN, "", "");
 
@@ -1128,6 +1131,7 @@ void Parser::FuncDef() {
     } else {
         handle_error("expect '(' in FuncDef");
     }
+    intermediate_.AddMidCode(func_name, IntermOp::FUNC_END, "", "");
     output("<FuncDef>");
 }
 
@@ -1255,15 +1259,15 @@ BlockItemType Parser::BlockItem() {
     return item_type;
 }
 
-// Stmt -> LVal '=' Exp ';' |
-//    	   [Exp] ';' |
+// Stmt -> LVal '=' Exp ';'
+//    	|  [Exp] ';'
 //         Block |
 //         'if' '(' Cond ')' Stmt [ 'else' Stmt ] |
 //         'while' '(' Cond ')' Stmt |
 //         'break' ';' | 'continue' ';' |
 //         'return' [Exp] ';' |
 //         LVal '=' 'getint''('')'';' |
-//         'printf''('FormatString{,Exp}')'';' // 1.有Exp 2.⽆Exp
+//         'printf''('FormatString{,Exp}')'';' // 1.with Exp 2.without Exp
 BlockItemType Parser::Stmt() {
     BlockItemType item_type = BlockItemType::INVALID;
     if (type_code_ == TypeCode::LBRACE) {
@@ -1326,15 +1330,20 @@ BlockItemType Parser::Stmt() {
                 retract(); // back to identifier
                 int assigned_line_no = token_.get_line_no();
                 std::string assigned_var_name = token_.get_str_value();
-                std::pair<DataType, std::string> lval_ret = LVal();
+                std::pair<bool, TableEntry *> search_res =
+                        symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, assigned_var_name);
+                if (!search_res.first) handle_error("cant find a assigned name in symbol table");
+                // judge it's an array or variable
+                std::pair<std::string, std::string> assigned_lval_ret = AssignedLval();
+                if (assigned_lval_ret.first.empty()) handle_error("can't find this assigned lval in symbol table");
                 next_sym();
                 if (type_code_ == TypeCode::ASSIGN) {
                     next_sym();
                     if (type_code_ == TypeCode::GETINTTK) {
-                        ReadStmt(assigned_var_name, lval_ret);
+                        ReadStmt(assigned_lval_ret);
                     } else {
                         retract(); // back to '='
-                        AssignStmt(assigned_line_no, assigned_var_name, lval_ret);
+                        AssignStmt(assigned_line_no, assigned_lval_ret);
                     }
                 } else {
                     if (type_code_ == TypeCode::SEMICN) {
@@ -1363,32 +1372,117 @@ BlockItemType Parser::Stmt() {
     return item_type;
 }
 
-// AssignStmt -> LVal '=' Exp ';'
-// @pre: already read '='
-// @exception:
-//      1. undeclared identifier
-//      2. can't change the const variable
-// @attention:
-//      Error(undeclared identifier) is handled in LVal()
-// @attention:
-//      LVal() given a var_name, use this var name to find its address in symbol table
-void
-Parser::AssignStmt(int assigned_line_no, std::string assigned_var_name, std::pair<DataType, std::string> lval_ret) {
-    auto search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, assigned_var_name);
-    if (search_res.first && search_res.second->symbol_type == SymbolType::CONST) {
-        add_error(assigned_line_no, ErrorType::CHANGE_CONST);
+
+// @brief: called when assign a value to a left value,
+//         need to return the name and index of the LVal
+// @retval: pair<name, index>, if index is empty, means it is NOT array
+// @exec: the name may be not found
+// @attention: use the alias of the variable
+std::pair<std::string, std::string> Parser::AssignedLval() {
+    std::string ident;
+    std::string ret_var_name;
+    std::string ret_idx;
+    int ident_line_no;
+    bool fetch_array = false;
+    int dims = 0;
+    std::string dim0_idx, dim1_idx;
+    std::pair<DataType, std::string> inner_exp_ret;
+
+    ident = token_.get_str_value();
+    ident_line_no = token_.get_line_no();
+    next_sym();
+    if (type_code_ == TypeCode::LBRACK) {
+        fetch_array = true;
+        dims += 1;
+        next_sym();
+        inner_exp_ret = Exp();
+        dim0_idx = inner_exp_ret.second;
+        next_sym(); // read ']'
+        if (type_code_ != TypeCode::RBRACK) {
+            retract();
+            add_error(ErrorType::EXPECTED_BRACK);
+        }
+    } else {
+        retract();
     }
 
     next_sym();
-    auto exp_ret = Exp();
+    if (type_code_ == TypeCode::LBRACK) {
+        fetch_array = true;
+        next_sym();
+        dims += 1;
+        inner_exp_ret = Exp();
+        dim1_idx = inner_exp_ret.second;
+        next_sym(); // read ']'
+        if (type_code_ != TypeCode::RBRACK) {
+            retract();
+            add_error(ErrorType::EXPECTED_BRACK);
+        }
+    } else {
+        retract();
+    }
+
+    std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, ident);
+    TableEntry *entry_ptr = search_res.second;
+    if (!search_res.first) {
+        add_error(ErrorType::UNDECL);
+    } else {
+        if (search_res.second->symbol_type == SymbolType::CONST) add_error(ident_line_no, ErrorType::CHANGE_CONST);
+
+        if (dims == 0) { // read "ident"
+            if (entry_ptr->dims == 0) {
+                ret_var_name = entry_ptr->alias;
+            } else {
+                handle_error("AssignedLval can't parse a unknown dims");
+            }
+        } else if (dims == 1) { // ident [ exp ]
+            if (entry_ptr->data_type == DataType::INT) { // ident is an integer
+                handle_error("a variable is called with [], but it is an value");
+            } else if ((entry_ptr->data_type == DataType::INT_ARR) && (entry_ptr->dims == 1)) {
+                ret_var_name = search_res.second->alias;
+                ret_idx = dim0_idx;
+            } else { // ident is a 2d array
+                handle_error("1 dimension array is called with [][]");
+            }
+        } else if (dims == 2) { // identifier [exp] [exp]
+            if ((entry_ptr->data_type == DataType::INT_ARR) && (entry_ptr->dims == 2)) {
+                ret_var_name = search_res.second->alias;
+                // arr[m][n]
+                // index = m * dim1_size
+                // index = index + dim1_idx
+                std::string index = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+                local_addr_ += 4;
+                intermediate_.AddMidCode(index, IntermOp::MUL, dim0_idx, entry_ptr->dim1_size);
+                intermediate_.AddMidCode(index, IntermOp::ADD, index, dim1_idx);
+                ret_idx = index;
+            } else {
+                handle_error("parse error in AssignedLval()");
+            }
+        } else {
+            handle_error("parse error in LVal");
+        }
+    }
+    output("<LVal>");
+    return std::make_pair(ret_var_name, ret_idx);
+}
+
+// AssignStmt -> LVal '=' Exp ';'
+// @pre: already read '='
+void
+Parser::AssignStmt(int assigned_line_no, const std::pair<std::string, std::string> &assigned_lval_ret) {
+    next_sym();
+    std::pair<DataType, std::string> exp_ret = Exp();
     next_sym();
     // TODO
-    // generate mid code to change the value of lvalue
-    // remember, use the address, 和addmidcode做一个约定，看要不要用地址
-    // 尤其是Lval数组的赋值，已经和Lval做了约定，会返回在符号表
-    if (type_code_ == TypeCode::SEMICN) {
-        // end
+    // generate mid code to change the value of lval
+    if (assigned_lval_ret.second.empty()) {
+        intermediate_.AddMidCode(assigned_lval_ret.first, IntermOp::ADD, exp_ret.second, 0);
     } else {
+        intermediate_.AddMidCode(assigned_lval_ret.first, IntermOp::ARR_SAVE, assigned_lval_ret.second, exp_ret.second);
+    }
+
+
+    if (type_code_ != TypeCode::SEMICN) {
         retract();
         add_error(ErrorType::EXPECTED_SEMICN);
     }
@@ -1398,39 +1492,38 @@ Parser::AssignStmt(int assigned_line_no, std::string assigned_var_name, std::pai
 // @pre: already read a if_token
 void Parser::IfStmt() {
     next_sym();
-    if (type_code_ == TypeCode::LPARENT) {
+    next_sym();
+    auto cond_ret = Cond();
+    if (cond_ret.first == DataType::INT) {
         next_sym();
-        auto cond_ret = Cond();
-        if (cond_ret.first == DataType::INT) {
+        if (type_code_ == TypeCode::RPARENT) {
             next_sym();
-            if (type_code_ == TypeCode::RPARENT) {
+            std::string else_label = intermediate_.GenLabel();
+            intermediate_.AddMidCode(else_label, IntermOp::BNE, 1, cond_ret.second);
+            Stmt(); // if-block
+            next_sym();
+            if (type_code_ == TypeCode::ELSETK) {
+                // GenLabel if_end_label
+                // AddMidCode: Jump if_end_label
+                // AddMidCode: else_block_label:
+                std::string if_end_label = intermediate_.GenLabel();
+                intermediate_.AddMidCode(if_end_label, IntermOp::JUMP, "", "");
+                intermediate_.AddMidCode(else_label, IntermOp::LABEL, "", "");
                 next_sym();
-                // TODO
-                // add mid code: BNE cond 1 else_block_label
-                Stmt(); // if-block
-                next_sym();
-                if (type_code_ == TypeCode::ELSETK) {
-                    // TODO
-                    // GenLabel if_end_label
-                    // AddMidCode: Jump if_end_label
-                    // AddMidCode: else_block_label:
-                    next_sym();
-                    Stmt();
-                    // AddMidCode: if_end_label:
-                } else {
-                    retract();
-                    // TODO
-                    // AddMidCode: else_block_label:
-                }
+                Stmt();
+                // AddMidCode: if_end_label:
+                intermediate_.AddMidCode(if_end_label, IntermOp::LABEL, "", "");
             } else {
                 retract();
-                add_error(ErrorType::EXPECTED_PARENT);
+                // AddMidCode: else_label:
+                intermediate_.AddMidCode(else_label, IntermOp::LABEL, "", "");
             }
         } else {
-            handle_error("expected ret_type INT from Cond");
+            retract();
+            add_error(ErrorType::EXPECTED_PARENT);
         }
     } else {
-        handle_error("expected a '(' in IfStmt");
+        handle_error("expected ret_type INT from Cond");
     }
 }
 
@@ -1443,7 +1536,6 @@ std::pair<DataType, std::string> Parser::Cond() {
 
 // LOrExp -> LAndExp | LOrExp '||' LAndExp
 // LOrExp -> LAndExp { '||' LAndExp }
-// @attention: left recurrence
 // @pre: already read a token
 std::pair<DataType, std::string> Parser::LOrExp() {
     DataType ret_type = DataType::INVALID;
@@ -1476,9 +1568,9 @@ std::pair<DataType, std::string> Parser::LOrExp() {
         } else {
             cur_be_parsed_int = false;
             std::string tmp_var_name =
-                    intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
-            IntermOp op = IntermOp::OR;
-            intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, inner_exp_ret.second);
+                    intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+            local_addr_ += 4;
+            intermediate_.AddMidCode(tmp_var_name, IntermOp::OR, ret_var_name, inner_exp_ret.second);
             ret_var_name = tmp_var_name;
         }
         next_sym();
@@ -1524,7 +1616,8 @@ std::pair<DataType, std::string> Parser::LAndExp() {
         } else {
             cur_be_parsed_int = false;
             std::string tmp_var_name =
-                    intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_);
+                    intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+            local_addr_ += 4;
             intermediate_.AddMidCode(tmp_var_name, IntermOp::AND, ret_var_name, inner_exp_ret.second);
             ret_var_name = tmp_var_name;
         }
@@ -1535,14 +1628,12 @@ std::pair<DataType, std::string> Parser::LAndExp() {
     return std::make_pair(ret_type, ret_var_name);
 }
 
-// EqExp -> RelExp | EqExp ( '==' | '!=' ) RelExp
 // EqExp -> RelExp { ('==' | '!=') RelExp}
 // @attention: left recurrence
 // @pre: already read a token
 std::pair<DataType, std::string> Parser::EqExp() {
     DataType ret_type = DataType::INVALID;
     std::string ret_var_name;
-
     bool cur_be_parsed_int = false;
 
     auto inner_exp_ret = RelExp();
@@ -1555,8 +1646,7 @@ std::pair<DataType, std::string> Parser::EqExp() {
     }
 
     next_sym();
-    while (type_code_ == TypeCode::EQL ||
-           type_code_ == TypeCode::NEQ) {
+    while (type_code_ == TypeCode::EQL || type_code_ == TypeCode::NEQ) {
         // erase then read
         retract();
         output("<EqExp>");
@@ -1576,7 +1666,8 @@ std::pair<DataType, std::string> Parser::EqExp() {
         } else {
             cur_be_parsed_int = false;
             std::string tmp_var_name =
-                    intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_);
+                    intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_, local_addr_);
+            local_addr_ += 4;
             IntermOp op = (sign == 0) ? IntermOp::EQ : IntermOp::NEQ;
             intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, inner_exp_ret.second);
             ret_var_name = tmp_var_name;
@@ -1606,10 +1697,8 @@ std::pair<DataType, std::string> Parser::RelExp() {
     }
 
     next_sym();
-    while (type_code_ == TypeCode::LSS ||
-           type_code_ == TypeCode::LEQ ||
-           type_code_ == TypeCode::GRE ||
-           type_code_ == TypeCode::GEQ) {
+    while (type_code_ == TypeCode::LSS || type_code_ == TypeCode::LEQ ||
+           type_code_ == TypeCode::GRE || type_code_ == TypeCode::GEQ) {
         // erase the token
         retract();
         output("<RelExp>");
@@ -1642,7 +1731,8 @@ std::pair<DataType, std::string> Parser::RelExp() {
                 op = IntermOp::GEQ;
             }
             std::string tmp_var_name =
-                    intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_);
+                    intermediate_.GenTmpVar(cur_func_name_, ret_type, cur_level_, local_addr_);
+            local_addr_ += 4;
             intermediate_.AddMidCode(tmp_var_name, op, ret_var_name, inner_exp_ret.second);
             ret_var_name = tmp_var_name;
         }
@@ -1655,26 +1745,28 @@ std::pair<DataType, std::string> Parser::RelExp() {
 
 // WhileStmt -> 'while' '(' Cond ')' Stmt
 void Parser::WhileStmt() {
-    // TODO
-    // generate mid code
-    if (type_code_ == TypeCode::WHILETK) {
-        next_sym(); // '('
-        if (type_code_ == TypeCode::LPARENT) {
-            next_sym();
-            Cond();
-            next_sym();
-            if (type_code_ != TypeCode::RPARENT) {
-                retract();
-                add_error(ErrorType::EXPECTED_PARENT);
-            }
-            next_sym();
-            Stmt();
-        } else {
-            handle_error("expect '(' in <WhileStmt>");
-        }
-    } else {
-        handle_error("while");
+    std::string label_while_begin = intermediate_.GenLabel();
+    std::string label_while_end = intermediate_.GenLabel();
+    while_labels.push_back(label_while_begin);
+    while_labels.push_back(label_while_end);
+    intermediate_.AddMidCode(label_while_begin, IntermOp::LABEL, "", "");
+
+    next_sym(); // eat '('
+    next_sym();
+    std::pair<DataType, std::string> cond_ret = Cond();
+    if (cond_ret.first != DataType::INT) handle_error("datatype of cond in while need to be int");
+    intermediate_.AddMidCode(label_while_end, IntermOp::BNE, cond_ret.second, 1);
+    next_sym();
+    if (type_code_ != TypeCode::RPARENT) {
+        retract();
+        add_error(ErrorType::EXPECTED_PARENT);
     }
+    next_sym();
+    Stmt();
+    while_labels.pop_back();
+    while_labels.pop_back();
+    intermediate_.AddMidCode(label_while_begin, IntermOp::JUMP, "", "");
+    intermediate_.AddMidCode(label_while_end, IntermOp::LABEL, "", "");
 }
 
 // ReturnStmt -> 'return' [<Exp>] ';'
@@ -1683,41 +1775,44 @@ void Parser::ReturnStmt() {
     has_ret_stmt_ = true;
     int return_line_no = token_.get_line_no();
     DataType parsed_ret_type = DataType::VOID;
-    if (type_code_ == TypeCode::RETURNTK) {
+    next_sym();
+    if (first_exp.count(type_code_) != 0) {
+        auto exp_ret = Exp(); // already read a token
+        parsed_ret_type = exp_ret.first;
         next_sym();
-        if (first_exp.count(type_code_) != 0) {
-            auto inner_exp_ret = Exp(); // already read a token
-            parsed_ret_type = inner_exp_ret.first;
-            next_sym();
-            if (type_code_ == TypeCode::SEMICN) {
-                // end
-            } else {
-                retract();
-                add_error(ErrorType::EXPECTED_SEMICN);
-            }
-        } else if (type_code_ == TypeCode::SEMICN) {
-            // end
+        if (parsed_ret_type == DataType::INT) {
+            intermediate_.AddMidCode(exp_ret.second, IntermOp::RET, "", "");
         } else {
+            intermediate_.AddMidCode("", IntermOp::RET, "", "");
+        }
+        if (type_code_ != TypeCode::SEMICN) {
             retract();
             add_error(ErrorType::EXPECTED_SEMICN);
         }
-        DataType should_ret_type = symbol_table_.SearchFunc(cur_func_name_).second->data_type;
-        if (should_ret_type == DataType::VOID && parsed_ret_type != DataType::VOID) {
-            add_error(return_line_no, ErrorType::RET_TYPE_MISMATCH);
-        }
+    } else if (type_code_ == TypeCode::SEMICN) {
+        intermediate_.AddMidCode("", IntermOp::RET, "", "");
     } else {
-        handle_error("expect 'return' in ReturnStmt");
+        retract();
+        add_error(ErrorType::EXPECTED_SEMICN);
+    }
+    DataType should_ret_type = symbol_table_.SearchFunc(cur_func_name_).second->data_type;
+    if (should_ret_type == DataType::VOID && parsed_ret_type != DataType::VOID) {
+        add_error(return_line_no, ErrorType::RET_TYPE_MISMATCH);
     }
 }
 
 // ReadStmt -> LVal '=' 'getint' '(' ')' ';'
 // @pre: already read 'getint'
 // param[in] assigned_var_name: the name be assigned
-void Parser::ReadStmt(const std::string &assigned_var_name, std::pair<DataType, std::string> lval_ret) {
-    auto search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, assigned_var_name);
-
-    if (search_res.first && search_res.second->symbol_type == SymbolType::CONST) {
-        add_error(ErrorType::CHANGE_CONST);
+void Parser::ReadStmt(const std::pair<std::string, std::string> &assigned_lval_ret) {
+    // todo: lval_ret is a string
+    if (assigned_lval_ret.second.empty()) { // is an int variable
+        intermediate_.AddMidCode(assigned_lval_ret.first, IntermOp::GETINT, "", "");
+    } else {
+        std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+        local_addr_ += 4;
+        intermediate_.AddMidCode(tmp, IntermOp::GETINT, "", "");
+        intermediate_.AddMidCode(assigned_lval_ret.first, IntermOp::ARR_SAVE, assigned_lval_ret.second, tmp);
     }
     next_sym(); // eat  (
     next_sym(); // eat )
@@ -1736,39 +1831,53 @@ void Parser::ReadStmt(const std::string &assigned_var_name, std::pair<DataType, 
 // @pre: already read 'printf'
 void Parser::WriteStmt() {
     int printf_line_no = token_.get_line_no();
+    std::pair<int, std::vector<std::string>> fmt_str_ret;
+    std::vector<std::string> vec_fmt_str;
+    std::pair<DataType, std::string> exp_ret;
+    std::vector<std::string> vec_exp_str;
     int format_no = 0;
     int exp_no = 0;
+
     next_sym();
-    if (type_code_ == TypeCode::LPARENT) {
-        next_sym();  // this sym is STRCON, FormatString
-        auto inner_ret = FormatString();
-        format_no = inner_ret.first;
+    next_sym();  // this sym is STRCON, FormatString
+    fmt_str_ret = FormatString();
+    format_no = fmt_str_ret.first;
+    vec_fmt_str = fmt_str_ret.second;
+    next_sym();
+    while (type_code_ == TypeCode::COMMA) {
         next_sym();
-        while (type_code_ == TypeCode::COMMA) {
-            next_sym();
-            Exp(); // TODO, store the ret_var from Exp
-            exp_no += 1;
-            next_sym(); // will be ',' ?
-        }
-        if (format_no == exp_no) {
-            // pass
-        } else {
-            add_error(printf_line_no, ErrorType::PRINT_NO_MISMATCH);
-        }
-        if (type_code_ != TypeCode::RPARENT) {
-            retract();
-            add_error(ErrorType::EXPECTED_PARENT);
-        }
-        next_sym();
-        if (type_code_ == TypeCode::SEMICN) {
-            // end
-        } else {
-            retract();
-            add_error(ErrorType::EXPECTED_SEMICN);
-        }
-    } else {
-        handle_error("expect '(' in WriteStmt");
+        exp_ret = Exp();
+        vec_exp_str.push_back(exp_ret.second);
+        exp_no += 1;
+        next_sym(); // will be ',' ?
     }
+
+    if (format_no != exp_no) add_error(printf_line_no, ErrorType::PRINT_NO_MISMATCH);
+
+    // add to mid-code
+    int j = 0;
+    for (auto & i : vec_fmt_str) {
+        if (i == "%d") {
+            intermediate_.AddMidCode(vec_exp_str[j], IntermOp::PRINT, "int", "");
+            j += 1;
+        } else if (i == "\\n") {
+            intermediate_.AddMidCode("\\n", IntermOp::PRINT, "str", "");
+        } else {
+            intermediate_.AddMidCode(i, IntermOp::PRINT, "str", "");
+        }
+    }
+
+
+    if (type_code_ != TypeCode::RPARENT) {
+        retract();
+        add_error(ErrorType::EXPECTED_PARENT);
+    }
+    next_sym();
+    if (type_code_ != TypeCode::SEMICN) {
+        retract();
+        add_error(ErrorType::EXPECTED_SEMICN);
+    }
+
 }
 
 // FormatString> → '"' { Char } '"'
@@ -1778,12 +1887,13 @@ void Parser::WriteStmt() {
 // @note: ascii('%') is 37, ascii('\') = 92
 // @attention: there can't be two error in one line
 //             if we can't parse the string, return <-1, str_vec>
+// @retval: format %d number and the slice of the string
 std::pair<int, std::vector<std::string>> Parser::FormatString() {
     bool has_error = false;
     int format_no = 0;
     std::vector<std::string> vec_str;
     std::string str_con = token_.get_str_value();
-    int len = str_con.length();
+    unsigned long long len = str_con.length();
     if (len < 2) {
         add_error(ErrorType::ILLEGAL_CHAR);
         return std::make_pair(0, vec_str);
@@ -1825,7 +1935,6 @@ std::pair<int, std::vector<std::string>> Parser::FormatString() {
         return std::make_pair(final_format_no, vec_str);
     }
 
-
     std::string str_tmp;
     int i = 0;
     if (str_con[i] == '"') {
@@ -1866,8 +1975,12 @@ std::pair<int, std::vector<std::string>> Parser::FormatString() {
                             has_error = true;
                             add_error(ErrorType::ILLEGAL_CHAR);
                         }
-                    } else {
-                        i -= 1;
+                    } else { // now at "n"
+                        if (!str_tmp.empty()) {
+                            vec_str.push_back(str_tmp);
+                            str_tmp.clear();
+                        }
+                        vec_str.emplace_back("\\n");
                     }
                 } else {
 
@@ -1892,14 +2005,21 @@ std::pair<int, std::vector<std::string>> Parser::FormatString() {
         has_error = true;
         add_error(ErrorType::ILLEGAL_CHAR);
     }
+
+    for (auto & fmt_str : vec_str) {
+        if (fmt_str != "%d") {
+            intermediate_.strcons.push_back(fmt_str);
+        }
+    }
     return std::make_pair(final_format_no, vec_str);
 }
 
-// MainFuncDef-> 'int' 'main' '(' ')' Block
+// MainFuncDef -> 'int' 'main' '(' ')' Block
 void Parser::MainFuncDef() {
     next_sym(); // eat main
     cur_func_name_ = "main";
-    symbol_table_.AddSymbol(cur_func_name_, DataType::INT, SymbolType::FUNC, "main", 0, cur_level_, 0, 0, 0);
+    symbol_table_.AddFunc(DataType::INT, "main", 0);
+    intermediate_.AddMidCode("main", IntermOp::FUNC_BEGIN, "", "");
     cur_level_ += 1;
     next_sym(); // eat (
     next_sym(); // eat )
@@ -1921,6 +2041,7 @@ void Parser::MainFuncDef() {
     } else {
         add_error(ErrorType::MISSING_RET);
     }
+    intermediate_.AddMidCode("main", IntermOp::FUNC_END, "", "");
     has_ret_stmt_ = false;
     output("<MainFuncDef>");
 }

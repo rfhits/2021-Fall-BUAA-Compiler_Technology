@@ -51,3 +51,16 @@ void Intermediate::AddMidCode(const std::string &dst, IntermOp op, int src1, int
     std::string str_src2 = std::to_string(src2);
     AddMidCode(dst, op, str_src1, str_src2);
 }
+
+std::string Intermediate::GenLabel() {
+    std::string label = "Label_" + std::to_string(label_cnt_++);
+    return label;
+}
+
+void Intermediate::interpret() {
+
+}
+
+void Intermediate::to_string() {
+
+}

@@ -75,13 +75,15 @@ private:
     int cur_level_ = 0;
     bool has_ret_stmt_ = false; // the parsing function has the return statement
     std::vector<bool> loop_stack_ = {false}; // the last bool means whether in loop statement
+    std::vector<std::string> while_labels = {};
     int redef_func_no_ = 0; // redefinition occurs, self plus, give the func a nickname
     int undef_name_no_ = 0;
     std::string name_;
     std::string alias_;
     int dims_ = 0, dim0_size_=0, dim1_size_=0;
     int var_size_;
-    unsigned int local_addr_ = 100;
+    const unsigned local_addr_init = 100;
+    unsigned int local_addr_ = local_addr_init;
     SymbolTable& symbol_table_;
 
     std::set<TypeCode> first_exp = { // FIRST(<Exp>)
@@ -130,7 +132,7 @@ private:
     std::vector<BlockItemType> Block();
     BlockItemType BlockItem();
     BlockItemType Stmt();
-    void AssignStmt(int line_no, std::string assigned_var_name, std::pair<DataType, std::string> lval_ret);
+    void AssignStmt(int line_no,  const std::pair<std::string , std::string>& lval_ret);
     void IfStmt();
     std::pair<DataType, std::string> Cond();
     std::pair<DataType, std::string> LOrExp();
@@ -139,7 +141,8 @@ private:
     std::pair<DataType, std::string> RelExp();
     void WhileStmt();
     void ReturnStmt();
-    void ReadStmt(const std::string& assigned_var_name, std::pair<DataType, std::string> lval_ret);
+    std::pair<std::string, std::string> AssignedLval();
+    void ReadStmt(const std::pair<std::string , std::string>& assigned_lval_ret);
     void WriteStmt();
     std::pair<int, std::vector<std::string>> FormatString();
 
