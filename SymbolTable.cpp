@@ -71,7 +71,7 @@ std::pair<bool, TableEntry *> SymbolTable::SearchNearestSymbolNotFunc(
     } else {
         auto it = func_tables_.find(func_name);
         if (it != func_tables_.end()) {
-            std::vector<TableEntry> &table = it->second;
+            std::vector<TableEntry> table = it->second;
             for (long long i = table.size() - 1; i >= 0; i--) {
                 if (table[i].name == name) {
                     return std::make_pair(true, &(table[i]));
@@ -117,6 +117,7 @@ void SymbolTable::PopLevel(const std::string &func_name, int level) {
         if (it->level == level) {
 //            it = entry_table.erase(it);
             it->name = it->alias;
+            it++;
         } else {
             it++;
         }

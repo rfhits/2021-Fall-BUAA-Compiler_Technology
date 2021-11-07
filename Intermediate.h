@@ -29,6 +29,39 @@ enum class IntermOp {
     RET, EXIT
 };
 
+
+const std::unordered_map<IntermOp, std::string> op_to_str = {
+        {IntermOp::SUB, "SUB"},
+        {IntermOp::ADD,"ADD"},
+        {IntermOp::MUL,"MUL"},
+        {IntermOp::DIV,"DIV"},
+        {IntermOp::MOD,"MOD"},
+        {IntermOp::AND,"AND"},
+        {IntermOp::OR,"OR"},
+        {IntermOp::NOT,"NOT"},
+        {IntermOp::EQ,"EQ"},
+        {IntermOp::NEQ,"NEQ"},
+        {IntermOp::LSS,"LSS"},
+        {IntermOp::LEQ,"LEQ"},
+        {IntermOp::GRE,"GRE"},
+        {IntermOp::GEQ,"GEQ"},
+        {IntermOp::GETINT,"GETINT"},
+        {IntermOp::PRINT,"PRINT"},
+        {IntermOp::ARR_SAVE,"ARR_SAVE"},
+        {IntermOp::ARR_LOAD,"ARR_LOAD"},
+        {IntermOp::LABEL,"LABEL"},
+        {IntermOp::JUMP,"JUMP"},
+        {IntermOp::BEQ,"BEQ"},
+        {IntermOp::BNE,"BNE"},
+        {IntermOp::FUNC_BEGIN,"FUNC_BEGIN"},
+        {IntermOp::FUNC_END,"FUNC_END"},
+        {IntermOp::PREPARE_CALL,"PREPARE_CALL"},
+        {IntermOp::PUSH_VAL,"PUSH_VAL"},
+        {IntermOp::PUSH_ARR,"PUSH_ARR"},
+        {IntermOp::CALL,"CALL"},
+        {IntermOp::RET,"RET"},
+};
+
 struct IntermCode {
     std::string dst;
     IntermOp op;
@@ -40,12 +73,18 @@ class Intermediate {
 private:
     int tmp_cnt_ = 0; // how many tmp vars have been generated
     int label_cnt_ = 0; // how many labels have been generated
-    std::vector<IntermCode> interm_codes;
+    std::vector<IntermCode> interm_codes_;
     SymbolTable &symbol_table_;
     std::ofstream &out_;
 
+    static std::string get_op_string(IntermOp op);
+
 public:
     std::vector<std::string> strcons;
+
+    std::string code_to_string(const IntermCode& code);
+
+    void codes_to_string();
 
     Intermediate(SymbolTable &symbol_table, std::ofstream &out);
 
@@ -63,8 +102,6 @@ public:
     void AddMidCode(const std::string &dst, IntermOp op, const std::string &src1, int src2);
 
     void AddMidCode(const std::string &dst, IntermOp op, int src1, int src2);
-
-    void to_string();
 
     void interpret();
 };

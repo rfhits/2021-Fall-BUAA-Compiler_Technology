@@ -8,6 +8,7 @@ int main() {
     std::string testfile_path = "testfile.txt";
     std::string output_path = "output.txt";
     std::string error_out_path = "error.txt";
+
     std::vector<std::string> output_str;
 
     std::ifstream in_stream(testfile_path);
@@ -17,14 +18,15 @@ int main() {
     std::ofstream out(output_path);
     std::ofstream error_out(error_out_path);
     ErrorHandler error_handler(error_out);
-//    ErrorHandler error_handler(std::cerr);
     Lexer lexer(ss.str(), error_handler);
     lexer.uncomment();
 
     SymbolTable symbol_table;
     Intermediate interm(symbol_table, out);
-    Parser parser( symbol_table,lexer,error_handler, interm, true, out);
+    Parser parser( symbol_table,lexer,error_handler, interm, false, out);
     parser.Program();
+
+    interm.codes_to_string();
 
     out.close();
     error_out.close();

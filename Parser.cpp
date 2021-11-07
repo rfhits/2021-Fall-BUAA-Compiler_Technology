@@ -4,8 +4,7 @@
 
 #include "Parser.h"
 
-#define DBG false
-
+#define DBG true
 
 Parser::Parser(SymbolTable &symbol_table, Lexer &lexer, ErrorHandler &error_handler, Intermediate &intermediate,
                bool print_mode, std::ofstream &out) :
@@ -91,6 +90,9 @@ void Parser::output_error() {
         err_msg += err_id;
         error_handler_.log_error(err_msg);
     }
+    if (errors.size() > 0) {
+        std::cout << "error happened" << std::endl;
+    }
 }
 
 
@@ -99,8 +101,7 @@ void Parser::Program() {
     next_sym();
     // three cond: const / int / void
     // three branches: Decl, Func, Main
-    while (type_code_ == TypeCode::CONSTTK ||
-           type_code_ == TypeCode::INTTK) {
+    while (type_code_ == TypeCode::CONSTTK || type_code_ == TypeCode::INTTK) {
         if (type_code_ == TypeCode::CONSTTK) {
             Decl();
             next_sym();
@@ -220,7 +221,7 @@ void Parser::ConstDef() {
     int id_line_no = token_.get_line_no();
     bool is_array = false;
     name_ = token_.get_str_value();
-    alias_ = name_ + std::to_string(id_line_no);
+    alias_ = name_ + "_" + std::to_string(id_line_no);
     next_sym();
     if (type_code_ == TypeCode::LBRACK) {
         is_array = true;
@@ -273,7 +274,7 @@ void Parser::ConstDef() {
                                          parsed_int_arr, local_addr_)) {
             add_error(id_line_no, ErrorType::REDEF);
         }
-        int length = (dims_ == 2) ? dim0_size_ : dim0_size_ * dim1_size_;
+        int length = (dims_ == 1) ? dim0_size_ : dim0_size_ * dim1_size_;
         for (int i = 0; i < length; i++) {
             intermediate_.AddMidCode(alias_, IntermOp::ARR_SAVE, i, parsed_int_arr[i]);
             local_addr_ += 4;
@@ -934,7 +935,7 @@ void Parser::VarDecl() {
 void Parser::VarDef() {
     reset_sym();
     name_ = token_.get_str_value();
-    alias_ = name_ + std::to_string(token_.get_line_no());
+    alias_ = name_ + "_" + std::to_string(token_.get_line_no());
     bool is_array = false;
     std::pair<DataType, std::string> inner_exp_ret;
     if (type_code_ == TypeCode::IDENFR) {
@@ -1180,7 +1181,7 @@ void Parser::FuncFParam(int param_ord) {
     next_sym();
     if (type_code_ == TypeCode::IDENFR) {
         name_ = token_.get_str_value();
-        alias_ = name_ + std::to_string(token_.get_line_no());
+        alias_ = name_ + "_" + std::to_string(token_.get_line_no());
         next_sym();
         if (type_code_ == TypeCode::LBRACK) {
             dims_ = 1;
@@ -1286,6 +1287,13 @@ BlockItemType Parser::Stmt() {
         loop_stack_.pop_back();
     } else if (type_code_ == TypeCode::BREAKTK || type_code_ == TypeCode::CONTINUETK) {
         auto it = loop_stack_.end() - 1;
+        if (type_code_ == TypeCode::BREAKTK) {
+            std::string while_end_label = *(while_labels.end() - 1);
+            intermediate_.AddMidCode(while_end_label, IntermOp::JUMP, "", "");
+        } else {
+            std::string while_begin_label = *(while_labels.end() - 2);
+            intermediate_.AddMidCode(while_begin_label, IntermOp::JUMP, "", "");
+        }
         if (*it) {
             // yes, it is in loop
             item_type = (type_code_ == TypeCode::BREAKTK) ? BlockItemType::BREAK_STMT : BlockItemType::CONTINUE_STMT;
@@ -1699,6 +1707,7 @@ std::pair<DataType, std::string> Parser::RelExp() {
     next_sym();
     while (type_code_ == TypeCode::LSS || type_code_ == TypeCode::LEQ ||
            type_code_ == TypeCode::GRE || type_code_ == TypeCode::GEQ) {
+        TypeCode comp_op = type_code_;
         // erase the token
         retract();
         output("<RelExp>");
@@ -1709,11 +1718,11 @@ std::pair<DataType, std::string> Parser::RelExp() {
         if (cur_be_parsed_int && is_integer(inner_exp_ret.second)) {
             int parsed_inner_value = std::stoi(inner_exp_ret.second);
             int cur_parsed_value = std::stoi(ret_var_name);
-            if (type_code_ == TypeCode::LSS) {
+            if (comp_op == TypeCode::LSS) {
                 ret_var_name = std::to_string((cur_parsed_value < parsed_inner_value));
-            } else if (type_code_ == TypeCode::LEQ) {
+            } else if (comp_op == TypeCode::LEQ) {
                 ret_var_name = std::to_string((cur_parsed_value <= parsed_inner_value));
-            } else if (type_code_ == TypeCode::GRE) {
+            } else if (comp_op == TypeCode::GRE) {
                 ret_var_name = std::to_string((cur_parsed_value > parsed_inner_value));
             } else {
                 ret_var_name = std::to_string((cur_parsed_value >= parsed_inner_value));
@@ -1721,11 +1730,11 @@ std::pair<DataType, std::string> Parser::RelExp() {
         } else {
             cur_be_parsed_int = false;
             IntermOp op;
-            if (type_code_ == TypeCode::LSS) {
+            if (comp_op == TypeCode::LSS) {
                 op = IntermOp::LSS;
-            } else if (type_code_ == TypeCode::LEQ) {
+            } else if (comp_op == TypeCode::LEQ) {
                 op = IntermOp::LEQ;
-            } else if (type_code_ == TypeCode::GRE) {
+            } else if (comp_op == TypeCode::GRE) {
                 op = IntermOp::GRE;
             } else {
                 op = IntermOp::GEQ;
@@ -1856,7 +1865,7 @@ void Parser::WriteStmt() {
 
     // add to mid-code
     int j = 0;
-    for (auto & i : vec_fmt_str) {
+    for (auto &i: vec_fmt_str) {
         if (i == "%d") {
             intermediate_.AddMidCode(vec_exp_str[j], IntermOp::PRINT, "int", "");
             j += 1;
@@ -1976,6 +1985,7 @@ std::pair<int, std::vector<std::string>> Parser::FormatString() {
                             add_error(ErrorType::ILLEGAL_CHAR);
                         }
                     } else { // now at "n"
+                        str_tmp.erase(str_tmp.end()-1);
                         if (!str_tmp.empty()) {
                             vec_str.push_back(str_tmp);
                             str_tmp.clear();
@@ -2006,7 +2016,7 @@ std::pair<int, std::vector<std::string>> Parser::FormatString() {
         add_error(ErrorType::ILLEGAL_CHAR);
     }
 
-    for (auto & fmt_str : vec_str) {
+    for (auto &fmt_str: vec_str) {
         if (fmt_str != "%d") {
             intermediate_.strcons.push_back(fmt_str);
         }
@@ -2049,5 +2059,6 @@ void Parser::MainFuncDef() {
 // @brief: rest current symbol info
 void Parser::reset_sym() {
     name_ = "";
+    alias_ = "";
     dims_ = dim0_size_ = dim1_size_ = 0;
 }
