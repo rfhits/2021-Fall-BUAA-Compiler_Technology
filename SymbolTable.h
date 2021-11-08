@@ -50,11 +50,10 @@ struct TableEntry {
 };
 
 class SymbolTable {
-private:
+public:
     std::vector<TableEntry> global_table_;
     std::unordered_map<std::string, std::vector<TableEntry>> func_tables_;
 
-public:
     SymbolTable();
 
     std::pair<bool, TableEntry*> SearchFunc(const std::string& func_name);
