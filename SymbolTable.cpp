@@ -168,13 +168,19 @@ void SymbolTable::show_table() {
         std::cout << entry_to_string(&global_table_[i]) << std::endl;
     }
 
+    for (auto& i: func_tables_) {
+        std::cout << i.first << std::endl;
+        for (int j = 0; j < i.second.size(); j++) {
+            std::cout << entry_to_string(&i.second[j]) << std::endl;
+        }
+    }
 }
 
 std::string SymbolTable::entry_to_string(TableEntry *entry) {
     std::string str;
-    str += symbol_type_to_str.find(entry->symbol_type)->second;
+    str += symbol_type_to_str.find(entry->symbol_type)->second; // symbol_type
     str += " | ";
-    str += data_type_to_str.find(entry->data_type)->second;
+    str += data_type_to_str.find(entry->data_type)->second; // data_type
     str += " | ";
     str += entry->name;
     str += " | ";
@@ -183,6 +189,10 @@ std::string SymbolTable::entry_to_string(TableEntry *entry) {
     str += std::to_string(entry->dims);
     str += " | ";
     str += std::to_string(entry->level);
+    str += " | ";
+    str += std::to_string(entry->size);
+    str += " | ";
+    str += std::to_string(entry->addr);
     return str;
 }
 
@@ -212,6 +222,12 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
             table_entry.dim0_size = dim0_size;
             table_entry.dim1_size = dim1_size;
             table_entry.addr = addr;
+            if (data_type == DataType::INT) {
+                table_entry.size = 4;
+            } else if (data_type == DataType::INT_ARR) {
+                table_entry.size = (dims == 1) ? (4 * dim0_size) : (4 * dim0_size * dim1_size);
+            } else {}
+
             if (func_name.empty()) {
                 global_table_.push_back(table_entry);
             } else {
@@ -221,5 +237,25 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
             return true;
         }
     }
-    return false;
+}
+
+// @brief: the memory the function need
+// @exec: can't find function
+int SymbolTable::get_func_stack_size(const std::string& func_name) {
+    std::pair<bool, TableEntry *> search_res = SearchFunc(func_name);
+    if (!search_res.first) {
+        std::cout << "can't find func" << std::endl;
+        return 0;
+    } else {
+        int func_size = 0;
+        std::vector<TableEntry> func_table = func_tables_[func_name];
+        for (auto &i: func_table) {
+            if (i.symbol_type == SymbolType::PARAM) {
+                func_size += 4; // the param array is just an address
+            } else {
+                func_size += i.size;
+            }
+        }
+        return func_size;
+    }
 }

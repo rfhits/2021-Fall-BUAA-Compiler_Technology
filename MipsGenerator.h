@@ -16,13 +16,30 @@ private:
     std::vector<std::string> strcons_;
     std::vector<std::string> mips_codes_;
     std::ofstream &out_;
-    std::vector<std::string> s_reg_table_ = {"", "", "", "", "", "", "", "", "", ""};
-    std::vector<std::string> t_reg_table_ = {"", "", "", "", "", "", "", ""};
+    std::string cur_func_name_; // in which function label
+    std::string callee_name_;
+    int param_no_ = 0;
+    std::vector<std::string> s_regs_table_ = {"", "", "", "", "", "", "", ""};
+    std::vector<std::string> s_old_table_ = {"", "", "", "", "", "", "", ""};
+    std::vector<int> s_use_times_ = {0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<int> s_old_user_times = {0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<std::string> t_regs_table_ = {"", "", "", "", "", "", "", "", "", ""};
+    std::vector<std::string> t_old_table_ = {"", "", "", "", "", "", "", "", "", ""};
+    std::vector<int> frame_size_stack = {};
 
 public:
     std::string tab = "\t";
     std::string tab_space = "    ";
-    std::vector<std::string> reg = {
+    const int context_size = 100;
+    const int ra_off = 0; // $ra's offset to the pointer on the bottom of context stack
+    const int sp_off = ra_off + 4; // 4-7
+    const int a_regs_off = sp_off + 4; // 8-23
+    const int s_regs_off = a_regs_off + 16; // =24-55
+    const int t_regs_off = s_regs_off + 32; // =56-95
+    const int conserved_off = t_regs_off + 40; // =96-99
+
+
+    std::vector<std::string> reg = { // given a reg number, return its name
             "$zero", "$at", "$v0", "$v1",
             "$a0", "$a1", "$a2", "$a3",
             "$t0", "$t1", "$t2", "$t3",
@@ -38,9 +55,19 @@ public:
 
     void translate();
 
-    void add_mips_code(const std::string &code);
+    std::string assign_t_reg(std::string symbol);
 
-    void add_error(std::string error_msg);
+    std::string assign_s_reg(std::string symbol);
+
+    void add_code(const std::string &code);
+
+    void add_code(const std::string &op, const std::string &dst, const std::string &src1, const std::string &src2);
+
+    void add_code(std::string op, const std::string &reg_name, int off, std::string addr);
+
+    void add_code(const std::string &op, const std::string &dst, const std::string &src1);
+
+    void add_error(const std::string &error_msg);
 
 };
 

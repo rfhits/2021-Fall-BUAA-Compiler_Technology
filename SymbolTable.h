@@ -53,6 +53,7 @@ class SymbolTable {
 public:
     std::vector<TableEntry> global_table_;
     std::unordered_map<std::string, std::vector<TableEntry>> func_tables_;
+    std::vector<std::string> strcons_;
 
     SymbolTable();
 
@@ -75,6 +76,8 @@ public:
     void PopLevel(const std::string& func_name, int level);
 
     TableEntry* GetKthParam(const std::string& func_name, int k);
+
+    int get_func_stack_size(const std::string& func_name);
 
     bool const_replace();
 

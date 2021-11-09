@@ -139,6 +139,9 @@ int get_substr_no(const std::string& str, const std::string& sub) {
         count++;
         index++;
     }
-
     return count;
+}
+
+void assert(const std::string& msg){
+    std::cout << msg << std::endl;
 }

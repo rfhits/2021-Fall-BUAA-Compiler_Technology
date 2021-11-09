@@ -35,7 +35,7 @@ void Intermediate::AddMidCode(const std::string &dst, IntermOp op, const std::st
     interm_code.src1 = src1;
     interm_code.src2 = src2;
     if (INTERM_DUG) {
-        out_ << code_to_string(interm_code) << std::endl;
+        out_ << interm_code_to_string(interm_code) << std::endl;
     } else {
         interm_codes_.push_back(interm_code);
     }
@@ -69,11 +69,24 @@ void Intermediate::interpret() {
 
 void Intermediate::codes_to_string() {
     for (auto & interm_code : interm_codes_) {
-        out_ << code_to_string(interm_code) << std::endl;
+        out_ << interm_code_to_string(interm_code) << std::endl;
     }
 }
 
-std::string Intermediate::code_to_string(const IntermCode& code) {
+
+std::string get_op_string(IntermOp op) {
+    std::string str_op;
+    auto it = op_to_str.find(op);
+    if (it != op_to_str.end()) {
+        str_op = it->second;
+    } else {
+        str_op = "undefined_operator";
+    }
+    return str_op;
+}
+
+
+std::string interm_code_to_string(const IntermCode& code) {
     std::string output;
     std::string indent = "    ";
     if (code.op == IntermOp::LABEL || code.op == IntermOp::FUNC_BEGIN || code.op == IntermOp::FUNC_END)
@@ -93,15 +106,4 @@ std::string Intermediate::code_to_string(const IntermCode& code) {
         output += code.src2;
     }
     return output;
-}
-
-std::string Intermediate::get_op_string(IntermOp op) {
-    std::string str_op;
-    auto it = op_to_str.find(op);
-    if (it != op_to_str.end()) {
-        str_op = it->second;
-    } else {
-        str_op = "undefined_operator";
-    }
-    return str_op;
 }

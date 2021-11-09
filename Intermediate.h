@@ -69,6 +69,9 @@ struct IntermCode {
     std::string src2;
 };
 
+std::string interm_code_to_string(const IntermCode& code);
+std::string get_op_string(IntermOp op);
+
 class Intermediate {
 private:
     int tmp_cnt_ = 0; // how many tmp vars have been generated
@@ -77,12 +80,12 @@ private:
     SymbolTable &symbol_table_;
     std::ofstream &out_;
 
-    static std::string get_op_string(IntermOp op);
+
 
 public:
     std::vector<std::string> strcons;
 
-    std::string code_to_string(const IntermCode& code);
+
 
     void codes_to_string();
 

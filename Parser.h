@@ -82,7 +82,7 @@ private:
     std::string alias_;
     int dims_ = 0, dim0_size_=0, dim1_size_=0;
     int var_size_;
-    const unsigned local_addr_init = 100;
+    const unsigned local_addr_init = 0;
     unsigned int local_addr_ = local_addr_init;
     SymbolTable& symbol_table_;
 

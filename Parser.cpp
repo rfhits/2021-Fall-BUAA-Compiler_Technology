@@ -548,7 +548,8 @@ std::pair<DataType, std::string> Parser::Exp() {
 // LVal -> Ident { '[' Exp ']' }
 // @brief: find a value from defined variable or
 //         fetch a value from array
-//         need to generate a temp variable if fetch from array
+//         need to generate a temp variable if fetch from array,
+//         else just use the original alias
 // @! : use the alias name
 // @pre: use in fetch or be assigned to sth
 // @pre: already read an identifier token
@@ -869,7 +870,7 @@ std::pair<DataType, std::string> Parser::ConstInitVal() {
                 elements.push_back(std::stoi(inner_exp_ret.second));
             } else if (inner_exp_ret.first == DataType::INT_ARR) {
                 std::vector<int> inner_vec = str_to_vec_int(inner_exp_ret.second);
-                elements.insert(elements.begin(), inner_vec.begin(), inner_vec.end());
+                elements.insert(elements.end(), inner_vec.begin(), inner_vec.end());
             } else {
                 handle_error("ConstInitVal return not INT not INT_ARR");
             }
@@ -881,7 +882,7 @@ std::pair<DataType, std::string> Parser::ConstInitVal() {
                     elements.push_back(std::stoi(inner_exp_ret.second));
                 } else if (inner_exp_ret.first == DataType::INT_ARR) {
                     std::vector<int> inner_vec = str_to_vec_int(inner_exp_ret.second);
-                    elements.insert(elements.begin(), inner_vec.begin(), inner_vec.end());
+                    elements.insert(elements.end(), inner_vec.begin(), inner_vec.end());
                 } else {
                     handle_error("ConstInitVal return not INT not INT_ARR");
                 }
@@ -1488,7 +1489,6 @@ Parser::AssignStmt(int assigned_line_no, const std::pair<std::string, std::strin
     } else {
         intermediate_.AddMidCode(assigned_lval_ret.first, IntermOp::ARR_SAVE, assigned_lval_ret.second, exp_ret.second);
     }
-
 
     if (type_code_ != TypeCode::SEMICN) {
         retract();

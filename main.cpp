@@ -26,6 +26,7 @@ int main() {
     Parser parser( symbol_table,lexer,error_handler, interm, false, out);
     parser.Program();
 
+    symbol_table.show_table();
     interm.codes_to_string();
 
     out.close();
