@@ -1,10 +1,13 @@
 int a = 1;
 const int arr[2][2] = {{0,1}, {2,3}};
+int b = a + 1 + a + 1 + a;
 
-int foo() {
+int foo(int a, int b, int c, int d, int e, int arr[][2]) {
+    int var = (a+a)*(a+a)*(a+a)*(a+a)*(a+a);
     return 0;
 }
 
 int main() {
+    foo(a+1, a+2, a+3, a+4, a+5, arr);
     return 0;
 }

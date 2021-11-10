@@ -71,7 +71,7 @@ public:
                    int value, int level, int dims, int dim0_size, int dim1_size, unsigned int addr);
 
     bool AddConstArray(const std::string& func_name, const std::string& name, const std::string& alias,
-                       int level, int dim0, int dim1, std::vector<int> array_values, unsigned int addr);
+                       int level, int dims, int dim0, int dim1, std::vector<int> array_values, unsigned int addr);
 
     void PopLevel(const std::string& func_name, int level);
 

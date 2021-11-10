@@ -21,10 +21,13 @@ private:
     int param_no_ = 0;
     std::vector<std::string> s_regs_table_ = {"", "", "", "", "", "", "", ""};
     std::vector<std::string> s_old_table_ = {"", "", "", "", "", "", "", ""};
-    std::vector<int> s_use_times_ = {0, 0, 0, 0, 0, 0, 0, 0};
-    std::vector<int> s_old_user_times = {0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<int> s_fifo_order_ = {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<int> s_old_order_;
+
     std::vector<std::string> t_regs_table_ = {"", "", "", "", "", "", "", "", "", ""};
     std::vector<std::string> t_old_table_ = {"", "", "", "", "", "", "", "", "", ""};
+    std::vector<int> t_fifo_order_= {};
+    std::vector<int> t_old_order_= {};
     std::vector<int> frame_size_stack = {};
 
 public:
@@ -55,19 +58,27 @@ public:
 
     void translate();
 
+    std::pair<bool, std::string> search_in_st_regs(const std::string& symbol);
+
     std::string assign_t_reg(std::string symbol);
 
     std::string assign_s_reg(std::string symbol);
 
+    std::pair<int, std::string> get_memo_addr(std::string symbol);
+
     void add_code(const std::string &code);
 
     void add_code(const std::string &op, const std::string &dst, const std::string &src1, const std::string &src2);
+
+    void add_code(const std::string &op, const std::string &dst, const std::string &src1, int src2);
 
     void add_code(std::string op, const std::string &reg_name, int off, std::string addr);
 
     void add_code(const std::string &op, const std::string &dst, const std::string &src1);
 
     void add_error(const std::string &error_msg);
+
+    void release_reg(std::string);
 
 };
 

@@ -52,8 +52,9 @@ std::pair<bool, TableEntry *> SymbolTable::SearchSymbolInLevel(
     return std::make_pair(false, nullptr);
 }
 
-// @brief: search in the global table,
-//         search in the function table, if you can't find, go back to search in global
+// @brief: try to search in the function table,
+//         if you can't find, go back to search in global table
+//
 // @pre: the function is called when assigning or use a variable, search a symbol in the whole scope
 // @attention: do not search in function
 // @post: get the entry and judge if it is a const or if it is declared
@@ -100,6 +101,7 @@ bool SymbolTable::AddFunc(DataType data_type, const std::string &func_name, int 
         entry.data_type = data_type;
         entry.symbol_type = SymbolType::FUNC;
         entry.value = value;
+        entry.level = 0;
         global_table_.push_back(entry);
         std::vector<TableEntry> func_table;
         func_tables_[func_name] = func_table;
@@ -111,15 +113,27 @@ bool SymbolTable::AddFunc(DataType data_type, const std::string &func_name, int 
 // @pre: this function is called after parsing a block inside function body
 // @pre: the func_table exists
 void SymbolTable::PopLevel(const std::string &func_name, int level) {
-    std::vector<TableEntry> &entry_table = func_tables_[func_name];
-    auto it = entry_table.begin();
-    while (it != entry_table.end()) {
-        if (it->level == level) {
+    if (func_name.empty()) {
+        auto it = global_table_.begin();
+        while (it != global_table_.end()) {
+            if (it->symbol_type == SymbolType::CONST || it->symbol_type == SymbolType::VAR) {
+                it->name = it->alias;
+                it++;
+            } else {
+                it++;
+            }
+        }
+    } else {
+        std::vector<TableEntry> &entry_table = func_tables_[func_name];
+        auto it = entry_table.begin();
+        while (it != entry_table.end()) {
+            if (it->level == level) {
 //            it = entry_table.erase(it);
-            it->name = it->alias;
-            it++;
-        } else {
-            it++;
+                it->name = it->alias;
+                it++;
+            } else {
+                it++;
+            }
         }
     }
 }
@@ -137,7 +151,8 @@ TableEntry *SymbolTable::GetKthParam(const std::string &func_name, int k) {
 // add a const array into symbol_table
 // if success, return true
 bool SymbolTable::AddConstArray(const std::string &cur_func_name, const std::string &name, const std::string &alias,
-                                int level, int dim0, int dim1, std::vector<int> array_values, unsigned int addr) {
+                                int level, int dims, int dim0, int dim1, std::vector<int> array_values,
+                                unsigned int addr) {
     if (SearchSymbolInLevel(cur_func_name, level, name).first) {
         return false;
     } else {
@@ -146,8 +161,11 @@ bool SymbolTable::AddConstArray(const std::string &cur_func_name, const std::str
         table_entry.data_type = DataType::INT_ARR;
         table_entry.name = name;
         table_entry.alias = alias;
+        table_entry.dims = dims;
         table_entry.dim0_size = dim0;
         table_entry.dim1_size = dim1;
+        table_entry.size = (dims == 1) ? 4 * dim0 : 4 * dim0 * dim1;
+
         table_entry.level = level;
         table_entry.array_values = std::move(array_values);
         table_entry.addr = addr;
@@ -164,11 +182,13 @@ bool SymbolTable::AddConstArray(const std::string &cur_func_name, const std::str
 void SymbolTable::show_table() {
     std::cout << "symbol table" << std::endl;
     std::cout << "global_table: " << std::endl;
+    std::cout << "sym_type | data_type | name | value | dims | level | size | addr" << std::endl;
+
     for (int i = 0; i < global_table_.size(); i++) {
         std::cout << entry_to_string(&global_table_[i]) << std::endl;
     }
 
-    for (auto& i: func_tables_) {
+    for (auto &i: func_tables_) {
         std::cout << i.first << std::endl;
         for (int j = 0; j < i.second.size(); j++) {
             std::cout << entry_to_string(&i.second[j]) << std::endl;
@@ -241,7 +261,7 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
 
 // @brief: the memory the function need
 // @exec: can't find function
-int SymbolTable::get_func_stack_size(const std::string& func_name) {
+int SymbolTable::get_func_stack_size(const std::string &func_name) {
     std::pair<bool, TableEntry *> search_res = SearchFunc(func_name);
     if (!search_res.first) {
         std::cout << "can't find func" << std::endl;

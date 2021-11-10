@@ -22,7 +22,7 @@ std::string Intermediate::GenTmpVar(const std::string &func_name, DataType data_
 std::string Intermediate::GenTmpArr(const std::string &func_name, DataType data_type,
                                     int level, int dims, int dim0_size, int dim1_size, unsigned int addr) {
 
-    std::string name = "#Tmp" + std::to_string(tmp_cnt_++);
+    std::string name = "@Arr" + std::to_string(param_arr_cnt_++);
     symbol_table_.AddSymbol(func_name, data_type, SymbolType::VAR, name, name,
                             0, level, dims, dim0_size, dim1_size, addr);
     return name;

@@ -26,7 +26,7 @@ enum class IntermOp {
     FUNC_BEGIN, FUNC_END,
     PREPARE_CALL, PUSH_VAL, PUSH_ARR, CALL,
 
-    RET, EXIT
+    RET
 };
 
 
@@ -62,6 +62,14 @@ const std::unordered_map<IntermOp, std::string> op_to_str = {
         {IntermOp::RET,"RET"},
 };
 
+bool is_arith(IntermOp op) {
+    if (op == IntermOp::ADD || op == IntermOp::SUB || op == IntermOp::MUL || op==IntermOp::DIV) {
+        return true;
+    } else {
+        return false;
+    }
+};
+
 struct IntermCode {
     std::string dst;
     IntermOp op;
@@ -75,6 +83,7 @@ std::string get_op_string(IntermOp op);
 class Intermediate {
 private:
     int tmp_cnt_ = 0; // how many tmp vars have been generated
+    int param_arr_cnt_ = 0;
     int label_cnt_ = 0; // how many labels have been generated
     std::vector<IntermCode> interm_codes_;
     SymbolTable &symbol_table_;

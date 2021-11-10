@@ -3,9 +3,45 @@
     ARR_SAVE arr_2 1 1
     ARR_SAVE arr_2 2 2
     ARR_SAVE arr_2 3 3
+    ADD #Tmp0 a_1 1
+    ADD #Tmp1 #Tmp0 a_1
+    ADD #Tmp2 #Tmp1 1
+    ADD #Tmp3 #Tmp2 a_1
+    ADD b_3 #Tmp3 0
 FUNC_BEGIN foo  
+    ADD #Tmp4 a_5 a_5
+    ADD #Tmp5 a_5 a_5
+    MUL #Tmp6 #Tmp4 #Tmp5
+    ADD #Tmp7 a_5 a_5
+    MUL #Tmp8 #Tmp6 #Tmp7
+    ADD #Tmp9 a_5 a_5
+    MUL #Tmp10 #Tmp8 #Tmp9
+    ADD #Tmp11 a_5 a_5
+    MUL #Tmp12 #Tmp10 #Tmp11
     RET 0  
 FUNC_END foo  
 FUNC_BEGIN main  
+    PREPARE_CALL foo  
+    ADD #Tmp13 a_1 1
+    ADD #Tmp14 a_1 2
+    ADD #Tmp15 a_1 3
+    ADD #Tmp16 a_1 4
+    ADD #Tmp17 a_1 5
+    ARR_LOAD #Tmp18 arr_2 0
+    ARR_SAVE @Arr0 0 #Tmp18
+    ARR_LOAD #Tmp19 arr_2 1
+    ARR_SAVE @Arr0 1 #Tmp19
+    ARR_LOAD #Tmp20 arr_2 2
+    ARR_SAVE @Arr0 2 #Tmp20
+    ARR_LOAD #Tmp21 arr_2 3
+    ARR_SAVE @Arr0 3 #Tmp21
+    PUSH_VAL #Tmp13 0 
+    PUSH_VAL #Tmp14 1 
+    PUSH_VAL #Tmp15 2 
+    PUSH_VAL #Tmp16 3 
+    PUSH_VAL #Tmp17 4 
+    PUSH_ARR @Arr0 5 
+    CALL foo  
+    ADD #Tmp22 %RET 0
     RET 0  
 FUNC_END main  

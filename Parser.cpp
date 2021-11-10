@@ -162,6 +162,7 @@ void Parser::Program() {
     } else {
         handle_error("expect 'int' head of MainFuncDef");
     }
+    symbol_table_.PopLevel("", 0);
 
     out_strings_.emplace_back("<CompUnit>");
     if (print_mode_) {
@@ -270,8 +271,8 @@ void Parser::ConstDef() {
         local_addr_ += 4;
     } else if (const_init_val_ret.first == DataType::INT_ARR) {
         std::vector<int> parsed_int_arr = str_to_vec_int(const_init_val_ret.second);
-        if (!symbol_table_.AddConstArray(cur_func_name_, name_, alias_, cur_level_, dim0_size_, dim1_size_,
-                                         parsed_int_arr, local_addr_)) {
+        if (!symbol_table_.AddConstArray(cur_func_name_, name_, alias_, cur_level_,
+                                         dims_, dim0_size_, dim1_size_, parsed_int_arr, local_addr_)) {
             add_error(id_line_no, ErrorType::REDEF);
         }
         int length = (dims_ == 1) ? dim0_size_ : dim0_size_ * dim1_size_;
@@ -323,8 +324,7 @@ std::pair<DataType, std::string> Parser::AddExp() {
     }
 
     next_sym();
-    while (type_code_ == TypeCode::PLUS ||
-           type_code_ == TypeCode::MINU) {
+    while (type_code_ == TypeCode::PLUS || type_code_ == TypeCode::MINU) {
         int sign = (type_code_ == TypeCode::PLUS) ? 1 : -1;
         //erase then read again
         retract();
@@ -439,7 +439,9 @@ std::pair<DataType, std::string> Parser::UnaryExp() {
         inner_exp_ret = PrimaryExp();
         ret_type = inner_exp_ret.first;
         ret_var_name = inner_exp_ret.second;
-    } else if (type_code_ == TypeCode::PLUS || type_code_ == TypeCode::MINU || type_code_ == TypeCode::NOT) {
+    }
+        // + | - | !
+    else if (type_code_ == TypeCode::PLUS || type_code_ == TypeCode::MINU || type_code_ == TypeCode::NOT) {
         int op_no = UnaryOp(); // op_no is "op number"
         next_sym();
         inner_exp_ret = UnaryExp();
@@ -756,9 +758,9 @@ std::pair<DataType, std::string> Parser::CallFunc() {
                             int need_dims = need_param_ptr->dims;
                             int provide_dims = prvd_param_ptr->dims;
                             if (need_dims != provide_dims) has_arg_type_error = true;
-                            intermediate_.AddMidCode(param_name, IntermOp::PUSH_ARR, "", "");
+                            intermediate_.AddMidCode(param_name, IntermOp::PUSH_ARR, std::to_string(i), "");
                         } else {
-                            intermediate_.AddMidCode(param_name, IntermOp::PUSH_VAL, "", "");
+                            intermediate_.AddMidCode(param_name, IntermOp::PUSH_VAL, std::to_string(i), "");
                         }
 
                     }
@@ -939,71 +941,67 @@ void Parser::VarDef() {
     alias_ = name_ + "_" + std::to_string(token_.get_line_no());
     bool is_array = false;
     std::pair<DataType, std::string> inner_exp_ret;
-    if (type_code_ == TypeCode::IDENFR) {
+    next_sym();
+    if (type_code_ == TypeCode::LBRACK) {
+        is_array = true;
+        dims_ += 1;
         next_sym();
-        if (type_code_ == TypeCode::LBRACK) {
-            is_array = true;
-            dims_ += 1;
-            next_sym();
-            inner_exp_ret = ConstExp();
-            dim0_size_ = std::stoi(inner_exp_ret.second);
-            next_sym();
-            if (type_code_ != TypeCode::RBRACK) {
-                retract();
-                add_error(ErrorType::EXPECTED_BRACK);
-            }
-        } else {
-            retract(); // should go to read '='
-        }
+        inner_exp_ret = ConstExp();
+        dim0_size_ = std::stoi(inner_exp_ret.second);
         next_sym();
-        if (type_code_ == TypeCode::LBRACK) {
-            dims_ += 1;
-            next_sym();
-            inner_exp_ret = ConstExp();
-            dim1_size_ = std::stoi(inner_exp_ret.second);
-            next_sym();
-            if (type_code_ == TypeCode::RBRACK) {
-
-            } else {
-                retract();
-                add_error(ErrorType::EXPECTED_BRACK);
-            }
-        } else {
+        if (type_code_ != TypeCode::RBRACK) {
             retract();
+            add_error(ErrorType::EXPECTED_BRACK);
         }
-
-        DataType data_type = is_array ? DataType::INT_ARR : DataType::INT;
-        bool add_success = symbol_table_.AddSymbol(cur_func_name_, data_type, SymbolType::VAR,
-                                                   name_, alias_,
-                                                   0, cur_level_, dims_, dim0_size_, dim1_size_, local_addr_);
-        if (!is_array) {
-            local_addr_ += 4;
-        } else if (dims_ == 1) {
-            local_addr_ += (dim0_size_ * 4);
-        } else {
-            local_addr_ += (dim0_size_ * dim1_size_ * 4);
-        }
-        if (!add_success) add_error(ErrorType::REDEF);
-        next_sym();
-        if (type_code_ == TypeCode::ASSIGN) { // ['=' InitVal]
-            next_sym();
-            inner_exp_ret = InitVal();
-            if (inner_exp_ret.first == DataType::INT) {
-                intermediate_.AddMidCode(alias_, IntermOp::ADD, inner_exp_ret.second, 0);
-            } else {
-                std::vector<std::string> vec_str = str_to_vec_str(inner_exp_ret.second);
-                for (int i = 0; i < vec_str.size(); i++) {
-                    intermediate_.AddMidCode(alias_, IntermOp::ARR_SAVE, i, vec_str[i]);
-                }
-            }
-        } else {
-            // done
-            retract();
-        }
-        output("<VarDef>");
     } else {
-        handle_error("expect identifier at begin of <VarDef>");
+        retract(); // should go to read '='
     }
+    next_sym();
+    if (type_code_ == TypeCode::LBRACK) {
+        dims_ += 1;
+        next_sym();
+        inner_exp_ret = ConstExp();
+        dim1_size_ = std::stoi(inner_exp_ret.second);
+        next_sym();
+        if (type_code_ == TypeCode::RBRACK) {
+
+        } else {
+            retract();
+            add_error(ErrorType::EXPECTED_BRACK);
+        }
+    } else {
+        retract();
+    }
+
+    DataType data_type = is_array ? DataType::INT_ARR : DataType::INT;
+    bool add_success = symbol_table_.AddSymbol(cur_func_name_, data_type, SymbolType::VAR,
+                                               name_, alias_,
+                                               0, cur_level_, dims_, dim0_size_, dim1_size_, local_addr_);
+    if (!is_array) {
+        local_addr_ += 4;
+    } else if (dims_ == 1) {
+        local_addr_ += (dim0_size_ * 4);
+    } else {
+        local_addr_ += (dim0_size_ * dim1_size_ * 4);
+    }
+    if (!add_success) add_error(ErrorType::REDEF);
+    next_sym();
+    if (type_code_ == TypeCode::ASSIGN) { // ['=' InitVal]
+        next_sym();
+        inner_exp_ret = InitVal();
+        if (inner_exp_ret.first == DataType::INT) {
+            intermediate_.AddMidCode(alias_, IntermOp::ADD, inner_exp_ret.second, 0);
+        } else {
+            std::vector<std::string> vec_str = str_to_vec_str(inner_exp_ret.second);
+            for (int i = 0; i < vec_str.size(); i++) {
+                intermediate_.AddMidCode(alias_, IntermOp::ARR_SAVE, i, vec_str[i]);
+            }
+        }
+    } else {
+        // done
+        retract();
+    }
+    output("<VarDef>");
 }
 
 // InitVal -> '{' [ InitVal { ',' InitVal } ] '}'
@@ -1114,6 +1112,7 @@ void Parser::FuncDef() {
         symbol_table_.SearchFunc(cur_func_name_).second->value = param_no;
         next_sym();
         std::vector<BlockItemType> item_types = Block();
+        symbol_table_.PopLevel(cur_func_name_, cur_level_);
         cur_func_name_ = "";
         cur_level_ -= 1;
         if (func_type == DataType::VOID) {
@@ -1985,7 +1984,7 @@ std::pair<int, std::vector<std::string>> Parser::FormatString() {
                             add_error(ErrorType::ILLEGAL_CHAR);
                         }
                     } else { // now at "n"
-                        str_tmp.erase(str_tmp.end()-1);
+                        str_tmp.erase(str_tmp.end() - 1);
                         if (!str_tmp.empty()) {
                             vec_str.push_back(str_tmp);
                             str_tmp.clear();
@@ -2040,6 +2039,7 @@ void Parser::MainFuncDef() {
 
     next_sym();
     std::vector<BlockItemType> item_types = Block();
+    symbol_table_.PopLevel(cur_func_name_, cur_level_);
     cur_func_name_ = "";
     cur_level_ -= 1;
     if (has_ret_stmt_) {
