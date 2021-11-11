@@ -1,13 +1,20 @@
 int a = 1;
-const int arr[2][2] = {{0,1}, {2,3}};
+int arr[3][2] = {{0,1}, {2,3}, {4,5}};
 int b = a + 1 + a + 1 + a;
 
-int foo(int a, int b, int c, int d, int e, int arr[][2]) {
-    int var = (a+a)*(a+a)*(a+a)*(a+a)*(a+a);
+int f1(int a) {
+    return 0;
+}
+
+int f2(int a) {
     return 0;
 }
 
 int main() {
-    foo(a+1, a+2, a+3, a+4, a+5, arr);
+
+    f2(f1(a));
+    int n;
+    n  = getint();
+    printf("aa\n%d\n", n);
     return 0;
 }

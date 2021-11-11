@@ -615,11 +615,11 @@ std::pair<DataType, std::string> Parser::LVal() {
                     ret_var_name = entry_ptr->alias;
                 }
             } else if (entry_ptr->dims == 1) {
-                // the identifier is an array
+                // the identifier is a 1d array
                 // copy this array to a temp array
                 ret_type = DataType::INT_ARR;
                 ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
-                                                       cur_level_, 1, 0, 0, local_addr_);
+                                                       cur_level_, 1, entry_ptr->dim0_size, 0, local_addr_);
                 local_addr_ += entry_ptr->dim0_size * 4;
                 for (int i = 0; i < entry_ptr->dim0_size; i++) {
                     std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
@@ -628,9 +628,10 @@ std::pair<DataType, std::string> Parser::LVal() {
                     intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
                 }
             } else if (entry_ptr->dims == 2) {
+                // the identifier is a 2d array
                 ret_type = DataType::INT_ARR;
-                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
-                                                       cur_level_, 2, 0, 0, local_addr_);
+                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR, cur_level_,
+                                                       2, entry_ptr->dim0_size, entry_ptr->dim1_size, local_addr_);
                 int length = entry_ptr->dim0_size * entry_ptr->dim1_size;
                 local_addr_ += length * 4;
                 for (int i = 0; i < length; i++) {
@@ -655,17 +656,23 @@ std::pair<DataType, std::string> Parser::LVal() {
                     local_addr_ += 4;
                     intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_LOAD, entry_ptr->alias, dim0_idx);
                 }
-            } else { // ident is a 2d array
+            } else {
+                // ident is a 2d array
                 ret_type = DataType::INT_ARR;
-                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
-                                                       cur_level_, 1, 0, 0, local_addr_);
-                int length = entry_ptr->dim1_size * 4;
-                local_addr_ += length;
+                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR, cur_level_,
+                                                       1, entry_ptr->dim1_size, 0, local_addr_);
+                int length = entry_ptr->dim1_size;
+                local_addr_ += length * 4;
+
+                std::string base = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+                local_addr_ += 4;
+                intermediate_.AddMidCode(base, IntermOp::MUL, dim0_idx, entry_ptr->dim1_size);
                 for (int i = 0; i < length; i++) {
+                    intermediate_.AddMidCode(base, IntermOp::ADD, base, 1);
                     std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
                                                                         local_addr_);
                     local_addr_ += 4;
-                    intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, i);
+                    intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, base);
                     intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp_arr_value);
                 }
             }
@@ -1851,6 +1858,10 @@ void Parser::WriteStmt() {
     fmt_str_ret = FormatString();
     format_no = fmt_str_ret.first;
     vec_fmt_str = fmt_str_ret.second;
+    for (auto & i : vec_fmt_str) {
+        symbol_table_.add_to_strcons(i);
+    }
+
     next_sym();
     while (type_code_ == TypeCode::COMMA) {
         next_sym();

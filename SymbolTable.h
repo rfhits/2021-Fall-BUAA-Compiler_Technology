@@ -11,6 +11,7 @@
 #include <utility>
 #include <map>
 #include "ErrorHandler.h"
+#include "utils.h"
 
 enum class DataType {
     INVALID,
@@ -77,9 +78,15 @@ public:
 
     TableEntry* GetKthParam(const std::string& func_name, int k);
 
+    int get_global_data_size();
+
     int get_func_stack_size(const std::string& func_name);
 
-    bool const_replace();
+    void add_to_strcons(const std::string& str);
+
+    int find_str_idx(const std::string& str);
+
+    void add_error(const std::string& msg);
 
 };
 

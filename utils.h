@@ -18,5 +18,6 @@ std::string vec_int_to_str(std::vector<int> vec);
 std::vector<std::string> str_to_vec_str(const std::string& str);
 std::string vec_str_to_str(const std::vector<std::string>& vec);
 int get_substr_no(const std::string& str, const std::string& sub);
+int sum(const std::vector<int>& vec_int);
 void assert(const std::string& msg);
 #endif //INC_2021_FALL_BUAA_COMPILER_TECHNOLOGY_UTILS_H

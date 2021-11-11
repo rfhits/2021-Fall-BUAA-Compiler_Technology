@@ -11,24 +11,20 @@
 
 class MipsGenerator {
 private:
-    SymbolTable symbol_table_;
-    std::vector<IntermCode> interm_codes_;
-    std::vector<std::string> strcons_;
+    SymbolTable& symbol_table_;
+    std::vector<IntermCode>& interm_codes_;
     std::vector<std::string> mips_codes_;
     std::ofstream &out_;
     std::string cur_func_name_; // in which function label
     std::string callee_name_;
     int param_no_ = 0;
     std::vector<std::string> s_regs_table_ = {"", "", "", "", "", "", "", ""};
-    std::vector<std::string> s_old_table_ = {"", "", "", "", "", "", "", ""};
     std::vector<int> s_fifo_order_ = {0, 1, 2, 3, 4, 5, 6, 7};
-    std::vector<int> s_old_order_;
 
     std::vector<std::string> t_regs_table_ = {"", "", "", "", "", "", "", "", "", ""};
-    std::vector<std::string> t_old_table_ = {"", "", "", "", "", "", "", "", "", ""};
-    std::vector<int> t_fifo_order_= {};
-    std::vector<int> t_old_order_= {};
-    std::vector<int> frame_size_stack = {};
+    std::vector<int> t_fifo_order_= {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<std::string> write_back_symbols_ = {};
+    std::vector<int> frame_size_stack_ = {};
 
 public:
     std::string tab = "\t";
@@ -53,18 +49,23 @@ public:
             "$gp", "$sp", "$fp", "$ra"
     };
 
-    MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> &interm_codes, std::vector<std::string> &strcons,
-                  std::ofstream &out);
+    MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> &interm_codes, std::ofstream &out);
 
     void translate();
 
     std::pair<bool, std::string> search_in_st_regs(const std::string& symbol);
 
+    void save_to_memo(const std::string& table_name, const std::string& symbol);
+
     std::string assign_t_reg(std::string symbol);
 
     std::string assign_s_reg(std::string symbol);
 
-    std::pair<int, std::string> get_memo_addr(std::string symbol);
+    std::string get_a_reg_for(std::string symbol);
+
+    void load_to_reg(std::string symbol, std::string reg);
+
+    std::pair<int, std::string> get_memo_addr(const std::string& symbol);
 
     void add_code(const std::string &code);
 
@@ -78,7 +79,7 @@ public:
 
     void add_error(const std::string &error_msg);
 
-    void release_reg(std::string);
+    void release_reg_without_write_back(std::string reg_name);
 
 };
 

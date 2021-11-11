@@ -142,6 +142,14 @@ int get_substr_no(const std::string& str, const std::string& sub) {
     return count;
 }
 
+int sum(const std::vector<int>& vec_int) {
+    int res = 0;
+    for (int i : vec_int) {
+        res += i;
+    }
+    return res;
+}
+
 void assert(const std::string& msg){
     std::cout << msg << std::endl;
 }

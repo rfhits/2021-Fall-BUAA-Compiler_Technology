@@ -259,6 +259,19 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
     }
 }
 
+
+int SymbolTable::get_global_data_size() {
+    int global_size = 0;
+    for (auto &i : global_table_) {
+        if (i.symbol_type == SymbolType::VAR || i.symbol_type == SymbolType::CONST) {
+            global_size += i.size; // the param array is just an address
+        }
+    }
+    return global_size;
+}
+
+
+
 // @brief: the memory the function need
 // @exec: can't find function
 int SymbolTable::get_func_stack_size(const std::string &func_name) {
@@ -278,4 +291,28 @@ int SymbolTable::get_func_stack_size(const std::string &func_name) {
         }
         return func_size;
     }
+}
+
+void SymbolTable::add_to_strcons(const std::string& str) {
+    if (str == "%d") return;
+    for (auto & strcon : strcons_) {
+        if (strcon == str) {
+            return;
+        }
+    }
+    strcons_.push_back(str);
+}
+
+int SymbolTable::find_str_idx(const std::string& str) {
+    auto it = std::find(strcons_.begin(), strcons_.end(), str);
+    if (it != strcons_.end()) {
+        return it-strcons_.begin();
+    } else {
+        add_error("can't find " + str + " in strcons");
+        return -1;
+    }
+}
+
+void SymbolTable::add_error(const std::string& msg) {
+    std::cout << msg << std::endl;
 }

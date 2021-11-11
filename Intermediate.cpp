@@ -6,6 +6,14 @@
 
 #define INTERM_DUG true
 
+bool is_arith(IntermOp op) {
+    if (op == IntermOp::ADD || op == IntermOp::SUB || op == IntermOp::MUL || op==IntermOp::DIV || op == IntermOp::MOD) {
+        return true;
+    } else {
+        return false;
+    }
+};
+
 Intermediate::Intermediate(SymbolTable &symbol_table, std::ofstream &out) : symbol_table_(symbol_table), out_(out) {
 }
 
@@ -35,7 +43,8 @@ void Intermediate::AddMidCode(const std::string &dst, IntermOp op, const std::st
     interm_code.src1 = src1;
     interm_code.src2 = src2;
     if (INTERM_DUG) {
-        out_ << interm_code_to_string(interm_code) << std::endl;
+        out_ << interm_code_to_string(interm_code, true) << std::endl;
+        interm_codes_.push_back(interm_code);
     } else {
         interm_codes_.push_back(interm_code);
     }
@@ -69,7 +78,7 @@ void Intermediate::interpret() {
 
 void Intermediate::codes_to_string() {
     for (auto & interm_code : interm_codes_) {
-        out_ << interm_code_to_string(interm_code) << std::endl;
+        out_ << interm_code_to_string(interm_code, true) << std::endl;
     }
 }
 
@@ -86,9 +95,9 @@ std::string get_op_string(IntermOp op) {
 }
 
 
-std::string interm_code_to_string(const IntermCode& code) {
+std::string interm_code_to_string(const IntermCode& code, bool tab) {
     std::string output;
-    std::string indent = "    ";
+    std::string indent = (tab)? "    ": "";
     if (code.op == IntermOp::LABEL || code.op == IntermOp::FUNC_BEGIN || code.op == IntermOp::FUNC_END)
         indent = "";
 
