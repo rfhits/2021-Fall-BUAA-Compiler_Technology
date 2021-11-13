@@ -62,25 +62,35 @@ std::pair<bool, TableEntry *> SymbolTable::SearchNearestSymbolNotFunc(
         const std::string &func_name, const std::string &name) {
     if (func_name.empty()) {
         // search in the global table
-        for (unsigned long long i = 0; i < global_table_.size(); i++) {
-            if (global_table_[i].name == name && (global_table_[i].symbol_type != SymbolType::FUNC)) {
-                return std::make_pair(true, &(global_table_[i]));
-            } else {
-                // pass
+//        for (unsigned long long i = 0; i < global_table_.size(); i++) {
+//            if (global_table_[i].name == name && (global_table_[i].symbol_type != SymbolType::FUNC)) {
+//                return std::make_pair(true, &(global_table_[i]));
+//            } else {
+//                // pass
+//            }
+//        }
+        for (auto &i : global_table_) {
+            if (i.name == name && (i.symbol_type != SymbolType::FUNC)) {
+                return std::make_pair(true, &i);
             }
         }
+
     } else {
         auto it = func_tables_.find(func_name);
         if (it != func_tables_.end()) {
-            std::vector<TableEntry> table = it->second;
-            for (long long i = table.size() - 1; i >= 0; i--) {
-                if (table[i].name == name) {
-                    return std::make_pair(true, &(table[i]));
-                } else {
-                    // pass
+            for(auto entry_it = it->second.rbegin(); entry_it != it->second.rend(); entry_it++) {
+                if (entry_it->name == name) {
+                    return std::make_pair(true, &(*entry_it));
                 }
             }
-            // search in global table
+//            for (long long i = it->second.size() - 1; i >= 0; i--) {
+//                if (it->second[i].name == name) {
+//                    return std::make_pair(true, &(it->second[i]));
+//                } else {
+//                    // pass
+//                }
+//            }
+
             return SearchSymbolInLevel("", 0, name);
         } else { // the function does not exist
             return std::make_pair(false, nullptr);

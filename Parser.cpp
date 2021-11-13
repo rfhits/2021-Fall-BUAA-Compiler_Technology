@@ -601,7 +601,8 @@ std::pair<DataType, std::string> Parser::LVal() {
     }
 
     std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, ident);
-    TableEntry *entry_ptr = search_res.second;
+    TableEntry res_ptr = TableEntry(search_res.second);
+    TableEntry *entry_ptr = &res_ptr;
     if (!search_res.first) {
         add_error(ErrorType::UNDECL);
         ret_type = DataType::INT;
@@ -757,7 +758,7 @@ std::pair<DataType, std::string> Parser::CallFunc() {
                     std::string param_name = param_list[i].second;
                     TableEntry *prvd_param_ptr = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_,
                                                                                           param_name).second;
-                    // todo: u can delete this type check in code generate, it's suc a mess
+                    // todo: u can delete this type check in code generate, it's such a mess
                     if (param_list[i].first != symbol_table_.GetKthParam(called_func_name, i)->data_type) {
                         has_arg_type_error = true;
                     } else {
@@ -1032,7 +1033,7 @@ std::pair<DataType, std::string> Parser::InitVal() {
             inner_exp_ret = InitVal();
             if (inner_exp_ret.first == DataType::INT_ARR) {
                 std::vector<std::string> inner_vec = str_to_vec_str(inner_exp_ret.second);
-                ret_var_vec.insert(ret_var_vec.begin(), inner_vec.begin(), inner_vec.end());
+                ret_var_vec.insert(ret_var_vec.end(), inner_vec.begin(), inner_vec.end());
             } else if (inner_exp_ret.first == DataType::INT) {
                 ret_var_vec.push_back(inner_exp_ret.second);
             } else {
@@ -1044,7 +1045,7 @@ std::pair<DataType, std::string> Parser::InitVal() {
                 inner_exp_ret = InitVal();
                 if (inner_exp_ret.first == DataType::INT_ARR) {
                     std::vector<std::string> inner_vec = str_to_vec_str(inner_exp_ret.second);
-                    ret_var_vec.insert(ret_var_vec.begin(), inner_vec.begin(), inner_vec.end());
+                    ret_var_vec.insert(ret_var_vec.end(), inner_vec.begin(), inner_vec.end());
                 } else if (inner_exp_ret.first == DataType::INT) {
                     ret_var_vec.push_back(inner_exp_ret.second);
                 } else {
@@ -1222,9 +1223,9 @@ void Parser::FuncFParam(int param_ord) {
         if (!symbol_table_.AddSymbol(cur_func_name_, param_type, SymbolType::PARAM,
                                      name_, alias_,
                                      param_ord, cur_level_, dims_, dim0_size_, dim1_size_, local_addr_)) {
-            local_addr_ += 4;
             add_error(ErrorType::REDEF);
-        };
+        }
+        local_addr_ += 4;
         output("<FuncFParam>");
         return;
     } else {
@@ -1438,7 +1439,9 @@ std::pair<std::string, std::string> Parser::AssignedLval() {
     }
 
     std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, ident);
-    TableEntry *entry_ptr = search_res.second;
+//    TableEntry *entry_ptr = search_res.second;
+    TableEntry res_ptr = TableEntry(search_res.second);
+    TableEntry *entry_ptr = &res_ptr;
     if (!search_res.first) {
         add_error(ErrorType::UNDECL);
     } else {

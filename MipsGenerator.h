@@ -20,9 +20,14 @@ private:
     int param_no_ = 0;
     std::vector<std::string> s_regs_table_ = {"", "", "", "", "", "", "", ""};
     std::vector<int> s_fifo_order_ = {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<std::string> saved_s_regs_table_{};
+    std::vector<int> saved_s_fifo_order{};
 
     std::vector<std::string> t_regs_table_ = {"", "", "", "", "", "", "", "", "", ""};
     std::vector<int> t_fifo_order_= {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<std::string> saved_t_regs_table_{};
+    std::vector<int> saved_t_fifo_order{};
+
     std::vector<std::string> write_back_symbols_ = {};
     std::vector<int> frame_size_stack_ = {};
 

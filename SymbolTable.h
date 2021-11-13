@@ -48,7 +48,24 @@ struct TableEntry {
     unsigned int addr;
     int size;
     std::vector<int> array_values; // array const
+    TableEntry(){};
+    TableEntry(TableEntry* entry_ptr) {
+        symbol_type = entry_ptr->symbol_type;
+        data_type = entry_ptr->data_type;
+        name = entry_ptr->name;
+        alias = entry_ptr->alias;
+        value = entry_ptr->value;
+        dims = entry_ptr->dims;
+        dim0_size = entry_ptr->dim0_size;
+        dim1_size = entry_ptr->dim1_size;
+        level = entry_ptr->level;
+        addr = entry_ptr->addr;
+        size = entry_ptr->size;
+        array_values = entry_ptr->array_values;
+    };
 };
+
+
 
 class SymbolTable {
 public:

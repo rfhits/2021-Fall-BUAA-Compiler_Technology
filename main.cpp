@@ -31,7 +31,7 @@ int main() {
     parser.Program();
 
     symbol_table.show_table();
-    interm.codes_to_string();
+//    interm.codes_to_string();
     mips_generator.translate();
 
     interm_out.close();

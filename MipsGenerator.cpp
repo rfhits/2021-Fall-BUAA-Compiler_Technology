@@ -22,12 +22,12 @@ std::pair<int, std::string> MipsGenerator::get_memo_addr(const std::string &symb
             symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, symbol);
     if (!table_search_res.first) add_error("symbol can't be found in symbol table");
     if (table_search_res.second->level == 0) {
-        return std::make_pair(table_search_res.second->addr, "($gp)");
+        return std::make_pair(table_search_res.second->addr, "$gp");
     } else {
         if (frame_size_stack_.empty()) {
-            return std::make_pair(table_search_res.second->addr, "($sp)");
+            return std::make_pair(table_search_res.second->addr, "$sp");
         } else {
-            return std::make_pair(sum(frame_size_stack_) + table_search_res.second->addr, "($sp)");
+            return std::make_pair(sum(frame_size_stack_) + table_search_res.second->addr, "$sp");
         }
 
     }
@@ -84,6 +84,21 @@ std::string MipsGenerator::get_a_reg_for(std::string symbol) {
     if (symbol == "%RET") return "$v0";
     std::pair<bool, std::string> search_res = search_in_st_regs(symbol);
     if (search_res.first) {
+        int reg_no = search_res.second[2] - '0';
+        // adjust the fifo
+        if (search_res.second[1] == 's') {
+            int fifo_idx = std::find(s_fifo_order_.begin(), s_fifo_order_.end(), reg_no)-s_fifo_order_.begin();
+            for (int i = fifo_idx + 1; i < s_fifo_order_.size(); i++) {
+                s_fifo_order_[i - 1] = s_fifo_order_[i];
+            }
+            s_fifo_order_.back() = reg_no;
+        } else {
+            int fifo_idx = std::find(t_fifo_order_.begin(), t_fifo_order_.end(), reg_no)-t_fifo_order_.begin();
+            for (int i = fifo_idx + 1; i < t_fifo_order_.size(); i++) {
+                t_fifo_order_[i - 1] = t_fifo_order_[i];
+            }
+            t_fifo_order_.back() = reg_no;
+        }
         return search_res.second;
     } else {
         if (symbol[0] == '#') {
@@ -97,7 +112,7 @@ std::string MipsGenerator::get_a_reg_for(std::string symbol) {
 // @brief: this function is called to assign a t-reg for the temp symbol input
 //         temp symbol wouldn't be init, so we can just mark a reg for it,
 //         but if the write-back happened, we need to reload it from the stack
-// @pre: the symbol not in the regs
+// @pre: the symbol not in the t-regs
 // @retval: reg name, like "$t0"
 std::string MipsGenerator::assign_t_reg(std::string symbol) {
     bool has_empty = false; // need to pop out?
@@ -124,7 +139,7 @@ std::string MipsGenerator::assign_t_reg(std::string symbol) {
         for (int i = 1; i < t_fifo_order_.size(); i++) {
             t_fifo_order_[i - 1] = t_fifo_order_[i];
         }
-        t_fifo_order_[t_fifo_order_.size() - 1] = reg_no;
+        t_fifo_order_.back() = reg_no;
         t_regs_table_[reg_no] = "";
         write_back_symbols_.push_back(pop_symbol_name);
     }
@@ -157,23 +172,35 @@ std::string MipsGenerator::assign_s_reg(std::string symbol) {
         // todo: use dirty bit can save unnecessary save
         reg_no = s_fifo_order_[0];
         std::string pop_symbol_name = s_regs_table_[reg_no];
-        save_to_memo("s", pop_symbol_name);
+        std::pair<bool, TableEntry*> search_pop = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, pop_symbol_name);
+        if (search_pop.second->data_type == DataType::INT_ARR) {
+            // array addr do not need to write back
+        } else {
+            save_to_memo("s", pop_symbol_name);
+        }
         // maintain the table and fifo_order
         for (int i = 1; i < s_fifo_order_.size(); i++) {
             s_fifo_order_[i - 1] = s_fifo_order_[i];
         }
-        s_fifo_order_[s_fifo_order_.size() - 1] = reg_no;
+        s_fifo_order_.back() = reg_no;
         s_regs_table_[reg_no] = "";
     }
 
+    std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, symbol);
     std::pair<int, std::string> push_addr = get_memo_addr(symbol);
-    add_code("lw", "$s" + std::to_string(reg_no), push_addr.first, push_addr.second);
+    if (search_res.second->data_type == DataType::INT_ARR &&
+        (search_res.second->symbol_type == SymbolType::VAR || search_res.second->symbol_type == SymbolType::CONST)) {
+        // let $s equals the array address
+        add_code("add", "$s" + std::to_string(reg_no),  push_addr.second, push_addr.first);
+    } else {
+        add_code("lw", "$s" + std::to_string(reg_no), push_addr.first, push_addr.second);
+    }
     s_regs_table_[reg_no] = symbol;
     return "$s" + std::to_string(reg_no);
 }
 
 void MipsGenerator::add_error(const std::string &error_msg) {
-    std::cout << error_msg << std::endl;
+    std::cout << "!error: " + error_msg << std::endl;
 }
 
 // @brief: a nick function for add, sub, mul, div, sll
@@ -217,18 +244,19 @@ void MipsGenerator::add_code(const std::string &op, const std::string &dst, cons
 }
 
 // @brief: this function is called when lw or sw
-//         the base_addr should be '($sp)' or ($gp)
+//         the base_addr should be
 void MipsGenerator::add_code(const std::string op, const std::string &reg_name, int off, std::string base_addr) {
     if (op != "sw" && op != "lw") {
         add_error("expect lw or sw in memory access code");
     }
-
     std::string code = op;
+
+
     code += " ";
     code += reg_name;
     code += ", ";
     code += std::to_string(off);
-    code += base_addr;
+    code += ("(" + base_addr + ")");
     if (!MIPS_DBG) {
         mips_codes_.push_back(code);
     } else {
@@ -247,7 +275,7 @@ void MipsGenerator::translate() {
         add_code(code);
     }
     add_code(".text");
-    add_code("sub", "$gp", "$gp", symbol_table_.get_global_data_size());
+//    add_code("sub", "$gp", "$gp", symbol_table_.get_global_data_size());
     for (auto &i_code: interm_codes_) {
         // todo: sub gp at the begin, the all the content can use add to access
         add_code("");
@@ -261,7 +289,7 @@ void MipsGenerator::translate() {
             int func_stack_size = symbol_table_.get_func_stack_size(dst);
             int frame_size = context_size + func_stack_size;
             frame_size_stack_.push_back(frame_size);
-            add_code("sub $sp, $sp, -" + std::to_string(frame_size));
+            add_code("sub $sp, $sp, " + std::to_string(frame_size));
         }
             // PUSH_ARR
         else if (op == IntermOp::PUSH_ARR) {
@@ -278,7 +306,7 @@ void MipsGenerator::translate() {
                 add_code("add", "$a0", "$sp", arr_addr.first);
             }
             int param_off = param->addr;
-            add_code("sw", "$a0", param_off, "($sp)");
+            add_code("sw", "$a0", param_off, "$sp");
         }
             // PUSH_VAL
         else if (op == IntermOp::PUSH_VAL) {
@@ -289,13 +317,13 @@ void MipsGenerator::translate() {
                 // PUSH_VAL 1 1
                 //      add $a0 1 $0
                 //      sw $a0 param_off($sp)
-                add_code("add", "$a0", dst, "$zero");
-                add_code("sw", "$a0", param_off, "($sp)");
+                add_code("add", "$a0","$zero", dst);
+                add_code("sw", "$a0", param_off, "$sp");
             } else {
                 std::pair<bool, std::string> reg_search_res = search_in_st_regs(dst);
                 if (reg_search_res.first) {
                     // sw reg_name param_off($sp)
-                    add_code("sw", reg_search_res.second, param_off, "($sp)");
+                    add_code("sw", reg_search_res.second, param_off, "$sp");
                     release_reg_without_write_back(reg_search_res.second);
                 } else { // in memory
                     std::pair<bool, TableEntry *> table_search_res =
@@ -303,7 +331,7 @@ void MipsGenerator::translate() {
                     if (!table_search_res.first) add_error("param can't be found in symbol table");
                     std::pair<int, std::string> memo_addr = get_memo_addr(dst);
                     add_code("lw", "$a0", memo_addr.first, memo_addr.second);
-                    add_code("sw", "$a0", 4 * std::stoi(src1), "($sp)");
+                    add_code("sw", "$a0", 4 * std::stoi(src1), "$sp");
 
                 }
             }
@@ -318,22 +346,22 @@ void MipsGenerator::translate() {
             for (int i = 0; i < 8; i++) {
                 if (!s_regs_table_[i].empty()) {
                     saved_s_reg_no.push_back(i);
-                    add_code("sw", "$s" + std::to_string(i), func_stack_size + s_regs_off + 4 * i, "($sp)");
+                    add_code("sw", "$s" + std::to_string(i), func_stack_size + s_regs_off + 4 * i, "$sp");
                 }
             }
             for (int i = 0; i < 10; i++) {
                 if (!t_regs_table_[i].empty()) {
                     saved_t_reg_no.push_back(i);
-                    add_code("sw", "$t" + std::to_string(i), func_stack_size + t_regs_off + 4 * i, "($sp)");
+                    add_code("sw", "$t" + std::to_string(i), func_stack_size + t_regs_off + 4 * i, "$sp");
                 }
             }
             add_code("jal " + dst);
-            add_code("lw", "$ra", ra_off + func_stack_size, "($sp)");
+            add_code("lw", "$ra", ra_off + func_stack_size, "$sp");
             for (int i: saved_s_reg_no) {
-                add_code("lw", "$s" + std::to_string(i), func_stack_size + s_regs_off + 4 * i, "($sp)");
+                add_code("lw", "$s" + std::to_string(i), func_stack_size + s_regs_off + 4 * i, "$sp");
             }
             for (int i: saved_t_reg_no) {
-                add_code("lw", "$t" + std::to_string(i), func_stack_size + t_regs_off + 4 * i, "($sp)");
+                add_code("lw", "$t" + std::to_string(i), func_stack_size + t_regs_off + 4 * i, "$sp");
             }
             add_code("add", "$sp", "$sp", *(frame_size_stack_.end() - 1));
             frame_size_stack_.pop_back();
@@ -350,10 +378,18 @@ void MipsGenerator::translate() {
             }
             cur_func_name_ = dst;
             add_code(dst + " :");
-            for (int i = 0; i < s_regs_table_.size(); i++) {
-                s_regs_table_[i] = "";
-                s_fifo_order_[i] = i;
-                // todo: try to store params into table
+            if (cur_func_name_ != "main") {
+                // the non-main function's view of the s-t regs are empty,
+                // so save the current regs table and order until the end
+                saved_s_fifo_order = s_fifo_order_;
+                saved_s_regs_table_ = s_regs_table_;
+                saved_t_fifo_order = t_fifo_order_;
+                saved_t_regs_table_ = t_regs_table_;
+                for (int i = 0; i < s_regs_table_.size(); i++) {
+                    s_regs_table_[i] = "";
+                    s_fifo_order_[i] = i;
+                    // todo: try to store params into table
+                }
             }
         }
             // RET
@@ -370,7 +406,13 @@ void MipsGenerator::translate() {
         }
             // FUNC_END
         else if (op == IntermOp::FUNC_END) {
-            // do not need to do anything
+            if (cur_func_name_ != "main") {
+                add_code("jr $ra");
+            }
+            s_regs_table_ = saved_s_regs_table_;
+            s_fifo_order_ = saved_s_fifo_order;
+            t_fifo_order_ = saved_s_fifo_order;
+            t_regs_table_ = saved_t_regs_table_;
         }
             // add sub mul div
         else if (is_arith(op)) {
@@ -489,64 +531,59 @@ void MipsGenerator::translate() {
                 if (src2 != dst && src2[0] == '#') release_reg_without_write_back(src2_reg);
             }
         }
-            // ARR_LOAD
+            // ARR_LOAD, fetch a value from array
+            // ARR_LOAD var_1 arr_name idx
         else if (op == IntermOp::ARR_LOAD) {
             std::string dst_reg = get_a_reg_for(dst);
-            std::pair<int, std::string> arr_addr = get_memo_addr(src1);
+            std::string arr_addr_reg = get_a_reg_for(src1);
             if (is_integer(src2)) {
                 // ARR_LOAD #tmp arr_name 5
                 int element_off = 4 * std::stoi(src2);
-                add_code("lw", dst_reg, element_off + arr_addr.first, arr_addr.second);
+                add_code("lw", dst_reg, element_off, arr_addr_reg);
             } else {
                 // ARR_LOAD #tmp arr_name #tmp15
                 std::string idx_reg = get_a_reg_for(src2);
                 add_code("sll", "$a0", idx_reg, 2); // the index offset in $a0 now
-                add_code("add", "$a0", "$zero", arr_addr.first); // the offset to pointer in $a0 now
-                if (arr_addr.second == "($gp)") {
-                    add_code("add", "$a0", "$a0", "$gp");
-                } else {
-                    add_code("add", "$a0", "$a0", "$sp");
-                }
-                add_code("lw", dst_reg, 0, "($a0)");
+                add_code("add", "$a0", "$a0", arr_addr_reg); // the offset to pointer in $a0 now
+                add_code("lw", dst_reg, 0, "$a0");
             }
             // src1 and src2 may be use in steps after, so don't release
         }
-            // ARR_SAVE
+            // ARR_SAVE, save a value into memory
         else if (op == IntermOp::ARR_SAVE) {
+            // todo: the param and var/const are different, can optimize
             // scr1 is index, src2 is value
             // index use $a0, value use $a1
+            std::string off_reg = "$a0";
+            std::string val_reg = "$a1";
             std::string src1_reg, src2_reg;
             std::pair<int, std::string> arr_addr = get_memo_addr(dst);
+            std::string arr_addr_reg = get_a_reg_for(dst);
             // ARR_SAVE arr_1 1 10
             if (is_integer(src1) && is_integer(src2)) {
-                add_code("add", "$a1", "$zero", src2);
-                int element_off = 4 * std::stoi(src1) + arr_addr.first;
-                add_code("sw", "$a1", element_off, arr_addr.second);
+                add_code("add", val_reg, "$zero", src2);
+                int element_off = 4 * std::stoi(src1);
+                add_code("sw", val_reg, element_off, arr_addr_reg );
             } else if (is_integer(src1)) {
-                // index is integer,
+                // index/src1 is integer, val/src2 is a symbol
                 src2_reg = get_a_reg_for(src2);
-                int element_off = 4 * std::stoi(src1) + arr_addr.first;
-                add_code("sw", src2_reg, element_off, arr_addr.second);
+                int element_off = 4 * std::stoi(src1);
+                add_code("sw", src2_reg, element_off,  arr_addr_reg);
             } else if (is_integer(src2)) {
-                // index is symbol, value is integer
+                // index/src1 is symbol, value is integer
                 src1_reg = get_a_reg_for(src1);
-                std::string off_reg = "$a0";
-                std::string val_reg = "$a1";
                 add_code("add", off_reg, "$zero", src1_reg); // $a0 = src1
                 add_code("sll", off_reg, off_reg, 2); // $a0 *= 4
-                add_code("add", off_reg, "$zero", arr_addr.first); // $a0 + off
+                add_code("add", off_reg, off_reg, arr_addr_reg); // $a0 += arr_addr_reg
                 add_code("add", val_reg, "$zero", src2);
-                add_code("sw", val_reg, 0, "(" + off_reg + ")");
+                add_code("sw", val_reg, 0, off_reg );
             } else {
                 src1_reg = get_a_reg_for(src1); // index
                 src2_reg = get_a_reg_for(src2); // value
-                std::string off_reg = "$a0";
-                std::string val_reg = "$a1";
                 add_code("add", off_reg, "$zero", src1_reg); // $a0 = src1
                 add_code("sll", off_reg, off_reg, 2); // $a0 *= 4
-                add_code("add", off_reg, "$zero", arr_addr.first); // $a0 + off
-                add_code("add", val_reg, "$zero", src2_reg);
-                add_code("sw", val_reg, 0, "(" + off_reg + ")");
+                add_code("add", off_reg, off_reg, arr_addr_reg); // $a0 += arr_addr
+                add_code("sw", src2_reg, 0,  off_reg);
             }
             // todo: check if src2 can be release
             // if (src2[0] == '#') release_reg_without_write_back(src2_reg);
