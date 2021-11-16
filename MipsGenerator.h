@@ -9,6 +9,15 @@
 #include "SymbolTable.h"
 #include "Intermediate.h"
 
+const std::unordered_map<IntermOp, std::string> interm_op_to_instr = {
+        {IntermOp::EQ,"seq"},
+        {IntermOp::NEQ,"sne"},
+        {IntermOp::LSS,"slt"},
+        {IntermOp::LEQ,"sle"},
+        {IntermOp::GRE,"sgt"},
+        {IntermOp::GEQ,"sge"},
+};
+
 class MipsGenerator {
 private:
     SymbolTable& symbol_table_;
@@ -16,7 +25,8 @@ private:
     std::vector<std::string> mips_codes_;
     std::ofstream &out_;
     std::string cur_func_name_; // in which function label
-    std::string callee_name_;
+    std::string cur_callee_name_; // in which PREPARE_CALL
+    std::vector<std::string> callee_name_stack_{};
     int param_no_ = 0;
     std::vector<std::string> s_regs_table_ = {"", "", "", "", "", "", "", ""};
     std::vector<int> s_fifo_order_ = {0, 1, 2, 3, 4, 5, 6, 7};

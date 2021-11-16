@@ -7,12 +7,30 @@
 #define INTERM_DUG true
 
 bool is_arith(IntermOp op) {
-    if (op == IntermOp::ADD || op == IntermOp::SUB || op == IntermOp::MUL || op==IntermOp::DIV || op == IntermOp::MOD) {
+    if (op == IntermOp::ADD || op == IntermOp::SUB || op == IntermOp::MUL || op == IntermOp::DIV ||
+        op == IntermOp::MOD) {
         return true;
     } else {
         return false;
     }
 };
+
+bool is_bitwise(IntermOp op) {
+    if (op == IntermOp::AND || op == IntermOp::OR || op == IntermOp::NOT) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool is_cmp(IntermOp op) {
+    if (op == IntermOp::EQ || op == IntermOp::NEQ || op == IntermOp::LSS || op == IntermOp::LEQ ||
+        op == IntermOp::GRE || op == IntermOp::GEQ) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 Intermediate::Intermediate(SymbolTable &symbol_table, std::ofstream &out) : symbol_table_(symbol_table), out_(out) {
 }
@@ -53,7 +71,7 @@ void Intermediate::AddMidCode(const std::string &dst, IntermOp op, const std::st
 
 void Intermediate::AddMidCode(const std::string &dst, IntermOp op, int src1, const std::string &src2) {
     std::string str_src1 = std::to_string(src1);
-    AddMidCode(dst, op, str_src1,src2);
+    AddMidCode(dst, op, str_src1, src2);
 }
 
 void Intermediate::AddMidCode(const std::string &dst, IntermOp op, const std::string &src1, int src2) {
@@ -77,7 +95,7 @@ void Intermediate::interpret() {
 }
 
 void Intermediate::codes_to_string() {
-    for (auto & interm_code : interm_codes_) {
+    for (auto &interm_code: interm_codes_) {
         out_ << interm_code_to_string(interm_code, true) << std::endl;
     }
 }
@@ -95,9 +113,9 @@ std::string get_op_string(IntermOp op) {
 }
 
 
-std::string interm_code_to_string(const IntermCode& code, bool tab) {
+std::string interm_code_to_string(const IntermCode &code, bool tab) {
     std::string output;
-    std::string indent = (tab)? "    ": "";
+    std::string indent = (tab) ? "    " : "";
     if (code.op == IntermOp::LABEL || code.op == IntermOp::FUNC_BEGIN || code.op == IntermOp::FUNC_END)
         indent = "";
 

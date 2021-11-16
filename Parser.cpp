@@ -457,22 +457,21 @@ std::pair<DataType, std::string> Parser::UnaryExp() {
                 ret_var_name = std::to_string(!std::stoi(ret_var_name));
             }
         } else { // can't be parsed as integer
-            std::string temp_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-            local_addr_ += 4;
+            cur_be_parsed_int = false;
             if (op_no == 0) { // +
                 // no change to final return var name, it is in inner_exp_ret
             } else if (op_no == 1) {  // -
                 std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_,
                                                                    local_addr_);
                 local_addr_ += 4;
-                intermediate_.AddMidCode(temp_var_name, IntermOp::SUB, "0", inner_exp_ret.second);
-                ret_var_name = temp_var_name;
+                intermediate_.AddMidCode(tmp_var_name, IntermOp::SUB, "0", inner_exp_ret.second);
+                ret_var_name = tmp_var_name;
             } else {
                 std::string tmp_var_name = intermediate_.GenTmpVar(cur_func_name_, inner_exp_ret.first, cur_level_,
                                                                    local_addr_);
                 local_addr_ += 4;
-                intermediate_.AddMidCode(temp_var_name, IntermOp::NOT, inner_exp_ret.second, "");
-                ret_var_name = temp_var_name;
+                intermediate_.AddMidCode(tmp_var_name, IntermOp::NOT, inner_exp_ret.second, "");
+                ret_var_name = tmp_var_name;
             }
         }
     }

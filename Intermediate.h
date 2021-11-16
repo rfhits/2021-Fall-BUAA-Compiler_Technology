@@ -63,6 +63,8 @@ const std::unordered_map<IntermOp, std::string> op_to_str = {
 };
 
 bool is_arith(IntermOp op);
+bool is_bitwise(IntermOp op);
+bool is_cmp(IntermOp op);
 
 struct IntermCode {
     std::string dst;
