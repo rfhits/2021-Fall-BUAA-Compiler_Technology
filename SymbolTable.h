@@ -75,6 +75,8 @@ public:
 
     SymbolTable();
 
+    bool is_global_symbol(std::string sym_name);
+
     std::pair<bool, TableEntry*> SearchFunc(const std::string& func_name);
     std::pair<bool, TableEntry*> SearchSymbolInLevel(const std::string& func_name, int level, const std::string& sym_name);
     std::pair<bool, TableEntry*> SearchNearestSymbolNotFunc(const std::string& func_name, const std::string& name);

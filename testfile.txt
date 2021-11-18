@@ -1,14 +1,12 @@
-int sum2(int a, int b) {
-    return a+b;
-}
 
-int sum3(int a, int b, int c) {
-    return a + b + c;
+int f2(int x[]) {
+    x[0] = 100;
+    return 0;
 }
 
 int main() {
-    int a = 1, b = 2, c= 3, d=4;
-    int e = sum2(sum2(a,b),sum2(a,b));
-    printf("%d", e);
+    int a[1] = {0};
+    f2(a);
+    printf("%d\n", a[0]);
     return 0;
 }

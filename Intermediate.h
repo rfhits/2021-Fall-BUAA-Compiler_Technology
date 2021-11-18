@@ -81,6 +81,7 @@ private:
     int tmp_cnt_ = 0; // how many tmp vars have been generated
     int param_arr_cnt_ = 0;
     int label_cnt_ = 0; // how many labels have been generated
+    int while_label_cnt_ = 0;
 
     SymbolTable &symbol_table_;
     std::ofstream &out_;
@@ -103,6 +104,10 @@ public:
                           int dims, int dim0_size, int dim1_size, unsigned int addr);
 
     std::string GenLabel();
+
+    std::string GenWhileBeginLabel();
+
+    std::string GenWhileEndLabel();
 
     void AddMidCode(const std::string &dst, IntermOp op, const std::string &src1, const std::string &src2);
 

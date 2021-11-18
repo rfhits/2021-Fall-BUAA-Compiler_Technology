@@ -389,9 +389,9 @@ std::pair<DataType, std::string> Parser::MulExp() {
             if (sign == 0) {
                 ret_var_name = std::to_string(parsed_unary_exp_value * cur_parsed_value);
             } else if (sign == 1) {
-                ret_var_name = std::to_string(parsed_unary_exp_value / cur_parsed_value);
+                ret_var_name = std::to_string(cur_parsed_value / parsed_unary_exp_value);
             } else {
-                ret_var_name = std::to_string(parsed_unary_exp_value % cur_parsed_value);
+                ret_var_name = std::to_string( cur_parsed_value % parsed_unary_exp_value);
             }
         } else {
             cur_be_parsed_int = false;
@@ -618,28 +618,30 @@ std::pair<DataType, std::string> Parser::LVal() {
                 // the identifier is a 1d array
                 // copy this array to a temp array
                 ret_type = DataType::INT_ARR;
-                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
-                                                       cur_level_, 1, entry_ptr->dim0_size, 0, local_addr_);
-                local_addr_ += entry_ptr->dim0_size * 4;
-                for (int i = 0; i < entry_ptr->dim0_size; i++) {
-                    std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-                    local_addr_ += 4;
-                    intermediate_.AddMidCode(tmp, IntermOp::ARR_LOAD, entry_ptr->alias, i);
-                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
-                }
+//                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
+//                                                       cur_level_, 1, entry_ptr->dim0_size, 0, local_addr_);
+//                local_addr_ += entry_ptr->dim0_size * 4;
+//                for (int i = 0; i < entry_ptr->dim0_size; i++) {
+//                    std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+//                    local_addr_ += 4;
+//                    intermediate_.AddMidCode(tmp, IntermOp::ARR_LOAD, entry_ptr->alias, i);
+//                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
+//                }
+                ret_var_name = entry_ptr->name;
             } else if (entry_ptr->dims == 2) {
                 // the identifier is a 2d array
                 ret_type = DataType::INT_ARR;
-                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR, cur_level_,
-                                                       2, entry_ptr->dim0_size, entry_ptr->dim1_size, local_addr_);
-                int length = entry_ptr->dim0_size * entry_ptr->dim1_size;
-                local_addr_ += length * 4;
-                for (int i = 0; i < length; i++) {
-                    std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-                    local_addr_ += 4;
-                    intermediate_.AddMidCode(tmp, IntermOp::ARR_LOAD, entry_ptr->alias, i);
-                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
-                }
+                ret_var_name = entry_ptr->name;
+//                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR, cur_level_,
+//                                                       2, entry_ptr->dim0_size, entry_ptr->dim1_size, local_addr_);
+//                int length = entry_ptr->dim0_size * entry_ptr->dim1_size;
+//                local_addr_ += length * 4;
+//                for (int i = 0; i < length; i++) {
+//                    std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+//                    local_addr_ += 4;
+//                    intermediate_.AddMidCode(tmp, IntermOp::ARR_LOAD, entry_ptr->alias, i);
+//                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
+//                }
             } else {
                 handle_error("Lval can't parse a unknown dims");
             }
@@ -661,20 +663,34 @@ std::pair<DataType, std::string> Parser::LVal() {
                 ret_type = DataType::INT_ARR;
                 ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR, cur_level_,
                                                        1, entry_ptr->dim1_size, 0, local_addr_);
-                int length = entry_ptr->dim1_size;
-                local_addr_ += length * 4;
-
-                std::string base = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
                 local_addr_ += 4;
-                intermediate_.AddMidCode(base, IntermOp::MUL, dim0_idx, entry_ptr->dim1_size);
-                for (int i = 0; i < length; i++) {
-                    intermediate_.AddMidCode(base, IntermOp::ADD, base, 1);
-                    std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
-                                                                        local_addr_);
-                    local_addr_ += 4;
-                    intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, base);
-                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp_arr_value);
-                }
+                // add the dim0_idx to this arr
+                std::string offset =  intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+                local_addr_ += 4;
+                intermediate_.AddMidCode(offset, IntermOp::MUL, dim0_idx, 4);
+                intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, ident, offset);
+
+//                int length = entry_ptr->dim1_size;
+//                local_addr_ += length * 4;
+//
+//                std::string base = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+//                local_addr_ += 4;
+//                intermediate_.AddMidCode(base, IntermOp::MUL, dim0_idx, entry_ptr->dim1_size);
+//
+//                // the first index and save
+//                std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
+//                                                                    local_addr_);
+//                local_addr_ += 4;
+//                intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, base);
+//                intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, 0, tmp_arr_value);
+//                for (int i = 1; i < length; i++) {
+//                    intermediate_.AddMidCode(base, IntermOp::ADD, base, 1);
+//                    std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
+//                                                                        local_addr_);
+//                    local_addr_ += 4;
+//                    intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, base);
+//                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp_arr_value);
+//                }
             }
         } else if (dims == 2) { // identifier [exp] [exp]
             if ((entry_ptr->data_type == DataType::INT_ARR) && (entry_ptr->dims == 2)) {
@@ -1510,37 +1526,36 @@ void Parser::IfStmt() {
     next_sym();
     next_sym();
     auto cond_ret = Cond();
-    if (cond_ret.first == DataType::INT) {
+    if (cond_ret.first != DataType::INT) handle_error("expected ret_type INT from Cond");
+
+    next_sym();
+    if (type_code_ == TypeCode::RPARENT) {
         next_sym();
-        if (type_code_ == TypeCode::RPARENT) {
+        std::string else_label = intermediate_.GenLabel();
+        intermediate_.AddMidCode(else_label, IntermOp::BEQ, cond_ret.second, 0);
+        Stmt(); // if-block
+        next_sym();
+        if (type_code_ == TypeCode::ELSETK) {
+            // GenLabel if_end_label
+            // AddMidCode: Jump if_end_label
+            // AddMidCode: else_block_label:
+            std::string if_end_label = intermediate_.GenLabel();
+            intermediate_.AddMidCode(if_end_label, IntermOp::JUMP, "", "");
+            intermediate_.AddMidCode(else_label, IntermOp::LABEL, "", "");
             next_sym();
-            std::string else_label = intermediate_.GenLabel();
-            intermediate_.AddMidCode(else_label, IntermOp::BNE, 1, cond_ret.second);
-            Stmt(); // if-block
-            next_sym();
-            if (type_code_ == TypeCode::ELSETK) {
-                // GenLabel if_end_label
-                // AddMidCode: Jump if_end_label
-                // AddMidCode: else_block_label:
-                std::string if_end_label = intermediate_.GenLabel();
-                intermediate_.AddMidCode(if_end_label, IntermOp::JUMP, "", "");
-                intermediate_.AddMidCode(else_label, IntermOp::LABEL, "", "");
-                next_sym();
-                Stmt();
-                // AddMidCode: if_end_label:
-                intermediate_.AddMidCode(if_end_label, IntermOp::LABEL, "", "");
-            } else {
-                retract();
-                // AddMidCode: else_label:
-                intermediate_.AddMidCode(else_label, IntermOp::LABEL, "", "");
-            }
+            Stmt();
+            // AddMidCode: if_end_label:
+            intermediate_.AddMidCode(if_end_label, IntermOp::LABEL, "", "");
         } else {
             retract();
-            add_error(ErrorType::EXPECTED_PARENT);
+            // AddMidCode: else_label:
+            intermediate_.AddMidCode(else_label, IntermOp::LABEL, "", "");
         }
     } else {
-        handle_error("expected ret_type INT from Cond");
+        retract();
+        add_error(ErrorType::EXPECTED_PARENT);
     }
+
 }
 
 // Cond -> LOrExp
@@ -1762,8 +1777,8 @@ std::pair<DataType, std::string> Parser::RelExp() {
 
 // WhileStmt -> 'while' '(' Cond ')' Stmt
 void Parser::WhileStmt() {
-    std::string label_while_begin = intermediate_.GenLabel();
-    std::string label_while_end = intermediate_.GenLabel();
+    std::string label_while_begin = intermediate_.GenWhileBeginLabel();
+    std::string label_while_end = intermediate_.GenWhileEndLabel();
     while_labels.push_back(label_while_begin);
     while_labels.push_back(label_while_end);
     intermediate_.AddMidCode(label_while_begin, IntermOp::LABEL, "", "");
@@ -1772,7 +1787,7 @@ void Parser::WhileStmt() {
     next_sym();
     std::pair<DataType, std::string> cond_ret = Cond();
     if (cond_ret.first != DataType::INT) handle_error("datatype of cond in while need to be int");
-    intermediate_.AddMidCode(label_while_end, IntermOp::BNE, cond_ret.second, 1);
+    intermediate_.AddMidCode(label_while_end, IntermOp::BEQ, cond_ret.second, 0);
     next_sym();
     if (type_code_ != TypeCode::RPARENT) {
         retract();
@@ -1860,7 +1875,7 @@ void Parser::WriteStmt() {
     fmt_str_ret = FormatString();
     format_no = fmt_str_ret.first;
     vec_fmt_str = fmt_str_ret.second;
-    for (auto & i : vec_fmt_str) {
+    for (auto &i: vec_fmt_str) {
         symbol_table_.add_to_strcons(i);
     }
 

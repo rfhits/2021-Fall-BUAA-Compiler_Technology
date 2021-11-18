@@ -68,9 +68,13 @@ public:
 
     void translate();
 
+    void release_reg_without_write_back(std::string reg_name);
+
     std::pair<bool, std::string> search_in_st_regs(const std::string& symbol);
 
-    void save_to_memo(const std::string& table_name, const std::string& symbol);
+    void copy_to_memo(const std::string& table_name, const std::string& symbol);
+
+    void move_to_memo(const std::string& table_name, const std::string& symbol);
 
     std::string assign_t_reg(std::string symbol);
 
@@ -81,6 +85,8 @@ public:
     void load_to_reg(std::string symbol, std::string reg);
 
     std::pair<int, std::string> get_memo_addr(const std::string& symbol);
+
+    void move_s_regs_to_memo();
 
     void add_code(const std::string &code);
 
@@ -93,8 +99,6 @@ public:
     void add_code(const std::string &op, const std::string &dst, const std::string &src1);
 
     void add_error(const std::string &error_msg);
-
-    void release_reg_without_write_back(std::string reg_name);
 
 };
 

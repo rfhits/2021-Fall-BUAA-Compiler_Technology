@@ -1,33 +1,15 @@
-FUNC_BEGIN sum2  
-    ADD #Tmp0 a_1 b_1
-    RET #Tmp0  
-FUNC_END sum2  
-FUNC_BEGIN sum3  
-    ADD #Tmp1 a_5 b_5
-    ADD #Tmp2 #Tmp1 c_5
-    RET #Tmp2  
-FUNC_END sum3  
+FUNC_BEGIN f2  
+    ARR_SAVE x_2 0 100
+    RET 0  
+FUNC_END f2  
 FUNC_BEGIN main  
-    ADD a_10 1 0
-    ADD b_10 2 0
-    ADD c_10 3 0
-    ADD d_10 4 0
-    PREPARE_CALL sum2  
-    PREPARE_CALL sum2  
-    PUSH_VAL a_10 0 
-    PUSH_VAL b_10 1 
-    CALL sum2  
-    ADD #Tmp3 %RET 0
-    PREPARE_CALL sum2  
-    PUSH_VAL a_10 0 
-    PUSH_VAL b_10 1 
-    CALL sum2  
-    ADD #Tmp4 %RET 0
-    PUSH_VAL #Tmp3 0 
-    PUSH_VAL #Tmp4 1 
-    CALL sum2  
-    ADD #Tmp5 %RET 0
-    ADD e_11 #Tmp5 0
-    PRINT e_11 int 
+    ARR_SAVE a_8 0 0
+    PREPARE_CALL f2  
+    PUSH_ARR a 0 
+    CALL f2  
+    ADD #Tmp0 %RET 0
+    ARR_LOAD #Tmp1 a_8 0
+    PRINT #Tmp1 int 
+    PRINT \n str 
     RET 0  
 FUNC_END main  

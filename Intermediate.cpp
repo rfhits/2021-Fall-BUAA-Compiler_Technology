@@ -90,8 +90,14 @@ std::string Intermediate::GenLabel() {
     return label;
 }
 
-void Intermediate::interpret() {
+std::string Intermediate::GenWhileBeginLabel() {
+    std::string label = "While_Begin_Label_" + std::to_string(while_label_cnt_);
+    return label;
+}
 
+std::string Intermediate::GenWhileEndLabel() {
+    std::string label = "While_End_Label_" + std::to_string(while_label_cnt_++);
+    return label;
 }
 
 void Intermediate::codes_to_string() {

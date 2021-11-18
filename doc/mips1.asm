@@ -1,150 +1,72 @@
 .data
+	str_0:	.asciiz "\n"
 .text
 
-sgt $t1, $t2, 0
-
-# FUNC_BEGIN sum2  
-addi $sp, $sp, -32
+# FUNC_BEGIN f2  
+addi $sp, $sp, -20
 j main
-sum2 :
+f2 :
 
-# ADD #Tmp0 a_1 b_1
+# ARR_SAVE x_2 0 100
 lw $s0, 0($sp)
-lw $s1, 4($sp)
-add $t0, $s0, $s1
+add $a1, $zero, 100
+sw $a1, 0($s0)
 
-# RET #Tmp0  
-move $v0, $t0
+# RET 0  
+add $v0, $zero, 0
 jr $ra
 
-# FUNC_END sum2  
-jr $ra
-
-# FUNC_BEGIN sum3  
-sum3 :
-
-# ADD #Tmp1 a_5 b_5
-lw $s0, 0($sp)
-lw $s1, 4($sp)
-add $t0, $s0, $s1
-
-# ADD #Tmp2 #Tmp1 c_5
-lw $s2, 8($sp)
-add $t1, $t0, $s2
-
-# RET #Tmp2  
-move $v0, $t1
-jr $ra
-
-# FUNC_END sum3  
+# FUNC_END f2  
 jr $ra
 
 # FUNC_BEGIN main  
 main :
 
-# ADD a_10 1 0
-lw $s0, 0($sp)
-add $s0, $zero, 1
+# ARR_SAVE a_8 0 0
+add $s0, $sp, 0
+add $a1, $zero, 0
+sw $a1, 0($s0)
 
-# ADD b_10 2 0
-lw $s1, 4($sp)
-add $s1, $zero, 2
+# PREPARE_CALL f2  
+sub $sp, $sp, 104
 
-# ADD c_10 3 0
-lw $s2, 8($sp)
-add $s2, $zero, 3
+# ARR_LOAD #Tmp0 a_8 0
+lw $t0, 0($s0)
 
-# ADD d_10 4 0
-lw $s3, 12($sp)
-add $s3, $zero, 4
+# ARR_SAVE @Arr0 0 #Tmp0
+add $s1, $sp, 108
+sw $t0, 0($s1)
 
-# PREPARE_CALL sum2  
-sub $sp, $sp, 112
+# PUSH_ARR @Arr0 0 
+add $a0, $sp, 108
+sw $a0, 0($sp)
 
-# PREPARE_CALL sum2  
-sub $sp, $sp, 112
+# CALL f2  
+sw $ra, 4($sp)
+sw $s0, 28($sp)
+sw $s1, 32($sp)
+sw $t0, 60($sp)
+jal f2
+lw $ra, 4($sp)
+lw $s0, 28($sp)
+lw $s1, 32($sp)
+lw $t0, 60($sp)
+add $sp, $sp, 104
 
-# PUSH_VAL a_10 0 
-sw $s0, 0($sp)
-
-# PUSH_VAL b_10 1 
-sw $s1, 4($sp)
-
-# CALL sum2  
-sw $ra, 12($sp)
-sw $s0, 36($sp)
-sw $s1, 40($sp)
-sw $s2, 44($sp)
-sw $s3, 48($sp)
-jal sum2
-lw $ra, 12($sp)
-lw $s0, 36($sp)
-lw $s1, 40($sp)
-lw $s2, 44($sp)
-lw $s3, 48($sp)
-add $sp, $sp, 112
-
-# ADD #Tmp3 %RET 0
-add $t0, $v0, 0
-
-# PREPARE_CALL sum2  
-sub $sp, $sp, 112
-
-# PUSH_VAL a_10 0 
-sw $s0, 0($sp)
-
-# PUSH_VAL b_10 1 
-sw $s1, 4($sp)
-
-# CALL sum2  
-sw $ra, 12($sp)
-sw $s0, 36($sp)
-sw $s1, 40($sp)
-sw $s2, 44($sp)
-sw $s3, 48($sp)
-sw $t0, 68($sp)
-jal sum2
-lw $ra, 12($sp)
-lw $s0, 36($sp)
-lw $s1, 40($sp)
-lw $s2, 44($sp)
-lw $s3, 48($sp)
-lw $t0, 68($sp)
-add $sp, $sp, 112
-
-# ADD #Tmp4 %RET 0
+# ADD #Tmp1 %RET 0
 add $t1, $v0, 0
 
-# PUSH_VAL #Tmp3 0 
-sw $t0, 0($sp)
+# ARR_LOAD #Tmp2 a_8 0
+lw $t2, 0($s0)
 
-# PUSH_VAL #Tmp4 1 
-sw $t1, 4($sp)
-
-# CALL sum2  
-sw $ra, 12($sp)
-sw $s0, 36($sp)
-sw $s1, 40($sp)
-sw $s2, 44($sp)
-sw $s3, 48($sp)
-jal sum2
-lw $ra, 12($sp)
-lw $s0, 36($sp)
-lw $s1, 40($sp)
-lw $s2, 44($sp)
-lw $s3, 48($sp)
-add $sp, $sp, 112
-
-# ADD #Tmp5 %RET 0
-add $t2, $v0, 0
-
-# ADD e_11 #Tmp5 0
-lw $s4, 16($sp)
-add $s4, $t2, 0
-
-# PRINT e_11 int 
-move $a0, $s4
+# PRINT #Tmp2 int 
+move $a0, $t2
 li $v0, 1
+syscall
+
+# PRINT \n str 
+la $a0, str_0
+li $v0, 4
 syscall
 
 # RET 0  

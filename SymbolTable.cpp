@@ -326,3 +326,9 @@ int SymbolTable::find_str_idx(const std::string& str) {
 void SymbolTable::add_error(const std::string& msg) {
     std::cout << msg << std::endl;
 }
+
+bool SymbolTable::is_global_symbol(std::string sym_name) {
+    std::pair<bool, TableEntry*> search_res = SearchSymbolInLevel("", 0, sym_name);
+    if (search_res.first) return true;
+    else return false;
+}
