@@ -17,6 +17,7 @@ enum class IntermOp {
 
     GETINT, PRINT,
 
+    INIT_ARR_PTR,
     ARR_SAVE, // save to array
     ARR_LOAD, // load from array
 
@@ -37,26 +38,27 @@ const std::unordered_map<IntermOp, std::string> op_to_str = {
         {IntermOp::DIV,"DIV"},
         {IntermOp::MOD,"MOD"},
         {IntermOp::AND,"AND"},
-        {IntermOp::OR,"OR"},
-        {IntermOp::NOT,"NOT"},
-        {IntermOp::EQ,"EQ"},
-        {IntermOp::NEQ,"NEQ"},
-        {IntermOp::LSS,"LSS"},
-        {IntermOp::LEQ,"LEQ"},
-        {IntermOp::GRE,"GRE"},
-        {IntermOp::GEQ,"GEQ"},
-        {IntermOp::GETINT,"GETINT"},
-        {IntermOp::PRINT,"PRINT"},
-        {IntermOp::ARR_SAVE,"ARR_SAVE"},
-        {IntermOp::ARR_LOAD,"ARR_LOAD"},
-        {IntermOp::LABEL,"LABEL"},
-        {IntermOp::JUMP,"JUMP"},
-        {IntermOp::BEQ,"BEQ"},
-        {IntermOp::BNE,"BNE"},
-        {IntermOp::FUNC_BEGIN,"FUNC_BEGIN"},
-        {IntermOp::FUNC_END,"FUNC_END"},
-        {IntermOp::PREPARE_CALL,"PREPARE_CALL"},
-        {IntermOp::PUSH_VAL,"PUSH_VAL"},
+        {IntermOp::OR,           "OR"},
+        {IntermOp::NOT,          "NOT"},
+        {IntermOp::EQ,           "EQ"},
+        {IntermOp::NEQ,          "NEQ"},
+        {IntermOp::LSS,          "LSS"},
+        {IntermOp::LEQ,          "LEQ"},
+        {IntermOp::GRE,          "GRE"},
+        {IntermOp::GEQ,          "GEQ"},
+        {IntermOp::GETINT,       "GETINT"},
+        {IntermOp::PRINT,        "PRINT"},
+        {IntermOp::INIT_ARR_PTR, "INIT_ARR_PTR"},
+        {IntermOp::ARR_SAVE,     "ARR_SAVE"},
+        {IntermOp::ARR_LOAD,     "ARR_LOAD"},
+        {IntermOp::LABEL,        "LABEL"},
+        {IntermOp::JUMP,         "JUMP"},
+        {IntermOp::BEQ,          "BEQ"},
+        {IntermOp::BNE,          "BNE"},
+        {IntermOp::FUNC_BEGIN,   "FUNC_BEGIN"},
+        {IntermOp::FUNC_END,     "FUNC_END"},
+        {IntermOp::PREPARE_CALL, "PREPARE_CALL"},
+        {IntermOp::PUSH_VAL,     "PUSH_VAL"},
         {IntermOp::PUSH_ARR,"PUSH_ARR"},
         {IntermOp::CALL,"CALL"},
         {IntermOp::RET,"RET"},
@@ -91,8 +93,6 @@ private:
 public:
     std::vector<IntermCode> interm_codes_;
     std::vector<std::string> strcons;
-
-
 
     void codes_to_string();
 

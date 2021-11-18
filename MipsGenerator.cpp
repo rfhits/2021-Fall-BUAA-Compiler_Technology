@@ -11,7 +11,6 @@ MipsGenerator::MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> 
 
 }
 
-
 // @brief: release a reg without writing back,
 //         will change the order and table
 // @param: a string like "$s1", "$t2", ...
@@ -40,7 +39,7 @@ void MipsGenerator::release_reg_without_write_back(std::string reg_name) {
 //         so u don't need to add the frame size back
 // @note: in PUSH_VAL, the offset need to change, because the sp has been subtracted
 // @exec: may can find the symbol in symbol table
-// @retval: <int offset, string pointer>, like <4, "($gp)">
+// @retval: <int offset, string pointer>, like <4, "$gp">
 std::pair<int, std::string> MipsGenerator::get_memo_addr(const std::string &symbol) {
     std::pair<bool, TableEntry *> table_search_res =
             symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, symbol);
@@ -53,7 +52,6 @@ std::pair<int, std::string> MipsGenerator::get_memo_addr(const std::string &symb
         } else {
             return std::make_pair(sum(frame_size_stack_) + table_search_res.second->addr, "$sp");
         }
-
     }
 }
 
@@ -63,7 +61,6 @@ std::pair<int, std::string> MipsGenerator::get_memo_addr(const std::string &symb
 // @param[table_name]: "s" or "t"
 void MipsGenerator::copy_to_memo(const std::string &table_name, const std::string &symbol) {
     std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, symbol);
-    if (search_res.second->data_type == DataType::INT_ARR) return;
     if (table_name != "s" && table_name != "t") add_error("table name error");
     int reg_no = -1;
     if (table_name == "s") {
@@ -104,26 +101,24 @@ void MipsGenerator::move_s_regs_to_memo() {
     }
 }
 
-
-// @brief: load a symbol to a reg without writing back, it's dangerous
-void MipsGenerator::load_to_reg(std::string symbol, std::string reg) {
+// @brief: load a symbol to a reg_name without writing back, it's dangerous
+void MipsGenerator::load_to_reg(std::string symbol, std::string reg_name) {
     if (is_integer(symbol)) {
-        add_code("add", reg, "$zero", symbol);
+        add_code("add", reg_name, "$zero", symbol);
     } else {
         std::pair<bool, std::string> search_res = search_in_st_regs(symbol);
         if (search_res.first) {
-            add_code("move", reg, search_res.second);
+            add_code("move", reg_name, search_res.second);
         } else {
             std::pair<int, std::string> symbol_addr = get_memo_addr(symbol);
-            add_code("lw", reg, symbol_addr.first, symbol_addr.second);
+            add_code("lw", reg_name, symbol_addr.first, symbol_addr.second);
         }
     }
-
 }
 
 // @brief: symbol need to in a reg,
 //         so search in regs, if already in, just return,
-//         if not, assign a reg for it
+//         if not, load to reg from the stack
 // @note: before u use this function,
 //        make sure this symbol really should be put into reg,
 //        because
@@ -149,9 +144,9 @@ std::string MipsGenerator::get_a_reg_for(std::string symbol) {
         return search_res.second;
     } else {
         if (symbol[0] == '#') {
-            return assign_t_reg(symbol);
+            return load_to_t_reg(symbol);
         } else {
-            return assign_s_reg(symbol);
+            return load_to_s_reg(symbol);
         }
     }
 }
@@ -161,7 +156,7 @@ std::string MipsGenerator::get_a_reg_for(std::string symbol) {
 //         but if the write-back happened, we need to reload it from the stack
 // @pre: the symbol not in the t-regs
 // @retval: reg name, like "$t0"
-std::string MipsGenerator::assign_t_reg(std::string symbol) {
+std::string MipsGenerator::load_to_t_reg(std::string symbol) {
     bool has_empty = false; // need to pop out?
     bool need_load = false; // symbol has been written back to stack, need to load
     int reg_no = -1;
@@ -200,10 +195,9 @@ std::string MipsGenerator::assign_t_reg(std::string symbol) {
     return "$t" + std::to_string(reg_no);
 }
 
-// @brief: assign an s-reg for the symbol and load the symbol from stack
-//         so u don't need to reload after calling this function
+// @brief: load a symbol from stack to reg
 // @pre: the symbol not in the regs
-std::string MipsGenerator::assign_s_reg(std::string symbol) {
+std::string MipsGenerator::load_to_s_reg(const std::string &symbol) {
     bool has_empty = false;
     int reg_no = -1;
 
@@ -221,11 +215,9 @@ std::string MipsGenerator::assign_s_reg(std::string symbol) {
         std::string pop_symbol_name = s_regs_table_[reg_no];
         std::pair<bool, TableEntry *> search_pop = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_,
                                                                                             pop_symbol_name);
-        if (search_pop.second->data_type == DataType::INT_ARR) {
-            // array addr do not need to write back
-        } else {
-            copy_to_memo("s", pop_symbol_name);
-        }
+
+        copy_to_memo("s", pop_symbol_name);
+
         // maintain the table and fifo_order
         for (int i = 1; i < s_fifo_order_.size(); i++) {
             s_fifo_order_[i - 1] = s_fifo_order_[i];
@@ -236,13 +228,9 @@ std::string MipsGenerator::assign_s_reg(std::string symbol) {
 
     std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, symbol);
     std::pair<int, std::string> push_addr = get_memo_addr(symbol);
-    if (search_res.second->data_type == DataType::INT_ARR && (search_res.second->name[0] != '@') &&
-        (search_res.second->symbol_type == SymbolType::VAR || search_res.second->symbol_type == SymbolType::CONST)) {
-        // let $s equals the array address
-        add_code("add", "$s" + std::to_string(reg_no), push_addr.second, push_addr.first);
-    } else {
-        add_code("lw", "$s" + std::to_string(reg_no), push_addr.first, push_addr.second);
-    }
+
+    add_code("lw", "$s" + std::to_string(reg_no), push_addr.first, push_addr.second);
+
     s_regs_table_[reg_no] = symbol;
     return "$s" + std::to_string(reg_no);
 }
@@ -324,7 +312,6 @@ void MipsGenerator::translate() {
         add_code(code);
     }
     add_code(".text");
-//    add_code("sub", "$gp", "$gp", symbol_table_.get_global_data_size());
     for (auto &i_code: interm_codes_) {
         // todo: sub gp at the begin, the all the content can use add to access
         add_code("");
@@ -347,19 +334,10 @@ void MipsGenerator::translate() {
             // MIPS:
             //     add $a0 $sp|$gp off
             //     sw $a0 param_off($sp)
-            if (dst[0] == '@') {
-                std::string dst_reg = get_a_reg_for(dst);
-                add_code("add", "$a0", dst_reg, "$0");
-            } else {
-                std::pair<int, std::string> arr_addr = get_memo_addr(dst);
-                if (arr_addr.second == "$gp") {
-                    add_code("add", "$a0", "$gp", arr_addr.first);
-                } else {
-                    add_code("add", "$a0", "$sp", arr_addr.first);
-                }
-            }
+
+            std::string dst_reg = get_a_reg_for(dst);
             int param_off = std::stoi(src1) * 4;
-            add_code("sw", "$a0", param_off, "$sp");
+            add_code("sw", dst_reg, param_off, "$sp");
         }
             // PUSH_VAL
         else if (op == IntermOp::PUSH_VAL) {
@@ -372,7 +350,9 @@ void MipsGenerator::translate() {
                 //      sw $a0 param_off($sp)
                 add_code("add", "$a0", "$zero", dst);
                 add_code("sw", "$a0", param_off, "$sp");
-            } else {
+            }
+                // VAL is symbol
+            else {
                 std::pair<bool, std::string> reg_search_res = search_in_st_regs(dst);
                 if (reg_search_res.first) {
                     // sw reg_name param_off($sp)
@@ -385,7 +365,6 @@ void MipsGenerator::translate() {
                     std::pair<int, std::string> memo_addr = get_memo_addr(dst);
                     add_code("lw", "$a0", memo_addr.first, memo_addr.second);
                     add_code("sw", "$a0", 4 * std::stoi(src1), "$sp");
-
                 }
             }
         }
@@ -397,7 +376,6 @@ void MipsGenerator::translate() {
                     move_to_memo("s", s_regs_table_[i]);
                 }
             }
-
 
             // we don't save sp into the context, we use the frame_size to remember how much to return
             int func_stack_size = symbol_table_.get_func_stack_size(dst);
@@ -430,8 +408,6 @@ void MipsGenerator::translate() {
                 cur_callee_name_ = callee_name_stack_.back();
                 callee_name_stack_.pop_back();
             }
-
-
         }
             // FUNC_BEGIN
             // clear s_regs
@@ -703,7 +679,18 @@ void MipsGenerator::translate() {
             if (src1 != dst && src1[0] == '#') release_reg_without_write_back(src1_reg);
             if (src2 != dst && src2[0] == '#') release_reg_without_write_back(src2_reg);
         }
+            // INIT ARR PTR
+        else if (op == IntermOp::INIT_ARR_PTR) {
+            // todo: ptr value do not need to load from stack
+            if (dst == "des_7") {
+                int i = 0;
+            }
 
+            std::string dst_reg = get_a_reg_for(dst);
+            std::pair<int, std::string> ptr_addr = get_memo_addr(dst);
+            int arr_offset = ptr_addr.first + 4;
+            add_code("add", dst_reg, ptr_addr.second, arr_offset);
+        }
             // ARR_LOAD, fetch a value from array
             // ARR_LOAD var_1 arr_name idx
         else if (op == IntermOp::ARR_LOAD) {
@@ -734,7 +721,7 @@ void MipsGenerator::translate() {
             std::string arr_addr_reg = get_a_reg_for(dst);
             // ARR_SAVE arr_1 1 10
             if (is_integer(src1) && is_integer(src2)) {
-                add_code("add", val_reg, "$zero", src2);
+                add_code("add", val_reg, "$0", src2);
                 int element_off = 4 * std::stoi(src1);
                 add_code("sw", val_reg, element_off, arr_addr_reg);
             } else if (is_integer(src1)) {
@@ -765,13 +752,8 @@ void MipsGenerator::translate() {
         else if (op == IntermOp::GETINT) {
             add_code("li $v0, 5");
             add_code("syscall");
-            std::pair<bool, std::string> search_res = search_in_st_regs(dst);
-            if (search_res.first) {
-                add_code("move", search_res.second, "$v0");
-            } else {
-                std::pair<int, std::string> dst_addr = get_memo_addr(dst);
-                add_code("sw", "$v0", dst_addr.first, dst_addr.second);
-            }
+            std::string dst_reg = get_a_reg_for(dst);
+            add_code("move", dst_reg, "$v0");
         }
             // PRINT
         else if (op == IntermOp::PRINT) {

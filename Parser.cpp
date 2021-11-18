@@ -95,7 +95,6 @@ void Parser::output_error() {
     }
 }
 
-
 // CompUnit -> {Decl} {FuncDef} MainFuncDef
 void Parser::Program() {
     next_sym();
@@ -270,11 +269,13 @@ void Parser::ConstDef() {
         intermediate_.AddMidCode(alias_, IntermOp::ADD, const_init_val_ret.second, "0");
         local_addr_ += 4;
     } else if (const_init_val_ret.first == DataType::INT_ARR) {
+        intermediate_.AddMidCode(alias_, IntermOp::INIT_ARR_PTR, "", "");
         std::vector<int> parsed_int_arr = str_to_vec_int(const_init_val_ret.second);
         if (!symbol_table_.AddConstArray(cur_func_name_, name_, alias_, cur_level_,
                                          dims_, dim0_size_, dim1_size_, parsed_int_arr, local_addr_)) {
             add_error(id_line_no, ErrorType::REDEF);
         }
+        local_addr_ += 4; // for the pointer address
         int length = (dims_ == 1) ? dim0_size_ : dim0_size_ * dim1_size_;
         for (int i = 0; i < length; i++) {
             intermediate_.AddMidCode(alias_, IntermOp::ARR_SAVE, i, parsed_int_arr[i]);
@@ -612,36 +613,19 @@ std::pair<DataType, std::string> Parser::LVal() {
                 if (entry_ptr->symbol_type == SymbolType::CONST) {
                     ret_var_name = std::to_string(entry_ptr->value);
                 } else {
+                    // todo: none-array return alias for generate code,
+                    //       array return name, because it will be use in FuncCall,which will use alias
+//                    ret_var_name = entry_ptr->name;
                     ret_var_name = entry_ptr->alias;
                 }
             } else if (entry_ptr->dims == 1) {
                 // the identifier is a 1d array
-                // copy this array to a temp array
                 ret_type = DataType::INT_ARR;
-//                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR,
-//                                                       cur_level_, 1, entry_ptr->dim0_size, 0, local_addr_);
-//                local_addr_ += entry_ptr->dim0_size * 4;
-//                for (int i = 0; i < entry_ptr->dim0_size; i++) {
-//                    std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-//                    local_addr_ += 4;
-//                    intermediate_.AddMidCode(tmp, IntermOp::ARR_LOAD, entry_ptr->alias, i);
-//                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
-//                }
                 ret_var_name = entry_ptr->name;
             } else if (entry_ptr->dims == 2) {
                 // the identifier is a 2d array
                 ret_type = DataType::INT_ARR;
                 ret_var_name = entry_ptr->name;
-//                ret_var_name = intermediate_.GenTmpArr(cur_func_name_, DataType::INT_ARR, cur_level_,
-//                                                       2, entry_ptr->dim0_size, entry_ptr->dim1_size, local_addr_);
-//                int length = entry_ptr->dim0_size * entry_ptr->dim1_size;
-//                local_addr_ += length * 4;
-//                for (int i = 0; i < length; i++) {
-//                    std::string tmp = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-//                    local_addr_ += 4;
-//                    intermediate_.AddMidCode(tmp, IntermOp::ARR_LOAD, entry_ptr->alias, i);
-//                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp);
-//                }
             } else {
                 handle_error("Lval can't parse a unknown dims");
             }
@@ -667,30 +651,9 @@ std::pair<DataType, std::string> Parser::LVal() {
                 // add the dim0_idx to this arr
                 std::string offset =  intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
                 local_addr_ += 4;
-                intermediate_.AddMidCode(offset, IntermOp::MUL, dim0_idx, 4);
-                intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, ident, offset);
-
-//                int length = entry_ptr->dim1_size;
-//                local_addr_ += length * 4;
-//
-//                std::string base = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-//                local_addr_ += 4;
-//                intermediate_.AddMidCode(base, IntermOp::MUL, dim0_idx, entry_ptr->dim1_size);
-//
-//                // the first index and save
-//                std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
-//                                                                    local_addr_);
-//                local_addr_ += 4;
-//                intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, base);
-//                intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, 0, tmp_arr_value);
-//                for (int i = 1; i < length; i++) {
-//                    intermediate_.AddMidCode(base, IntermOp::ADD, base, 1);
-//                    std::string tmp_arr_value = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_,
-//                                                                        local_addr_);
-//                    local_addr_ += 4;
-//                    intermediate_.AddMidCode(tmp_arr_value, IntermOp::ARR_LOAD, entry_ptr->alias, base);
-//                    intermediate_.AddMidCode(ret_var_name, IntermOp::ARR_SAVE, i, tmp_arr_value);
-//                }
+//                int row_size = entry_ptr->dim1_size*4;
+                intermediate_.AddMidCode(offset, IntermOp::MUL, dim0_idx, 4*entry_ptr->dim1_size);
+                intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, entry_ptr->alias, offset);
             }
         } else if (dims == 2) { // identifier [exp] [exp]
             if ((entry_ptr->data_type == DataType::INT_ARR) && (entry_ptr->dims == 2)) {
@@ -781,9 +744,11 @@ std::pair<DataType, std::string> Parser::CallFunc() {
                             int need_dims = need_param_ptr->dims;
                             int provide_dims = prvd_param_ptr->dims;
                             if (need_dims != provide_dims) has_arg_type_error = true;
-                            intermediate_.AddMidCode(param_name, IntermOp::PUSH_ARR, std::to_string(i), "");
+                            intermediate_.AddMidCode(prvd_param_ptr->alias,
+                                                     IntermOp::PUSH_ARR, std::to_string(i), "");
                         } else {
-                            intermediate_.AddMidCode(param_name, IntermOp::PUSH_VAL, std::to_string(i), "");
+                            intermediate_.AddMidCode(param_name,
+                                                     IntermOp::PUSH_VAL, std::to_string(i), "");
                         }
 
                     }
@@ -817,7 +782,6 @@ std::pair<DataType, std::string> Parser::CallFunc() {
     }
     return std::make_pair(ret_type, ret_var_name);
 }
-
 
 // FuncRParams -> Exp { ',' Exp }
 // @brief: the function is called when calling a function,
@@ -1000,12 +964,14 @@ void Parser::VarDef() {
     bool add_success = symbol_table_.AddSymbol(cur_func_name_, data_type, SymbolType::VAR,
                                                name_, alias_,
                                                0, cur_level_, dims_, dim0_size_, dim1_size_, local_addr_);
-    if (!is_array) {
-        local_addr_ += 4;
-    } else if (dims_ == 1) {
-        local_addr_ += (dim0_size_ * 4);
-    } else {
-        local_addr_ += (dim0_size_ * dim1_size_ * 4);
+    local_addr_ += 4;
+    if (is_array) {
+        intermediate_.AddMidCode(alias_, IntermOp::INIT_ARR_PTR, "", "");
+        if (dims_ == 1) {
+            local_addr_ += (dim0_size_ * 4);
+        } else {
+            local_addr_ += (dim0_size_ * dim1_size_ * 4);
+        }
     }
     if (!add_success) add_error(ErrorType::REDEF);
     next_sym();
@@ -1246,7 +1212,6 @@ void Parser::FuncFParam(int param_ord) {
     } else {
         handle_error("expect Ident in <FuncFParam>");
     }
-
 }
 
 // Block -> '{' { BlockItem } '}'
@@ -1454,7 +1419,6 @@ std::pair<std::string, std::string> Parser::AssignedLval() {
     }
 
     std::pair<bool, TableEntry *> search_res = symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, ident);
-//    TableEntry *entry_ptr = search_res.second;
     TableEntry res_ptr = TableEntry(search_res.second);
     TableEntry *entry_ptr = &res_ptr;
     if (!search_res.first) {
@@ -1499,15 +1463,12 @@ std::pair<std::string, std::string> Parser::AssignedLval() {
     return std::make_pair(ret_var_name, ret_idx);
 }
 
-// AssignStmt -> LVal '=' Exp ';'
+// AssignStmt -> AssignedLVal '=' Exp ';'
 // @pre: already read '='
-void
-Parser::AssignStmt(int assigned_line_no, const std::pair<std::string, std::string> &assigned_lval_ret) {
+void Parser::AssignStmt(int assigned_line_no, const std::pair<std::string, std::string> &assigned_lval_ret) {
     next_sym();
     std::pair<DataType, std::string> exp_ret = Exp();
     next_sym();
-    // TODO
-    // generate mid code to change the value of lval
     if (assigned_lval_ret.second.empty()) {
         intermediate_.AddMidCode(assigned_lval_ret.first, IntermOp::ADD, exp_ret.second, 0);
     } else {

@@ -76,13 +76,13 @@ public:
 
     void move_to_memo(const std::string& table_name, const std::string& symbol);
 
-    std::string assign_t_reg(std::string symbol);
+    std::string load_to_t_reg(std::string symbol);
 
-    std::string assign_s_reg(std::string symbol);
+    std::string load_to_s_reg(const std::string& symbol);
 
     std::string get_a_reg_for(std::string symbol);
 
-    void load_to_reg(std::string symbol, std::string reg);
+    void load_to_reg(std::string symbol, std::string reg_name);
 
     std::pair<int, std::string> get_memo_addr(const std::string& symbol);
 

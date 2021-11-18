@@ -254,9 +254,14 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
             table_entry.addr = addr;
             if (data_type == DataType::INT) {
                 table_entry.size = 4;
-            } else if (data_type == DataType::INT_ARR) {
+            } else if (data_type == DataType::INT_ARR && name[0] != '@') {
                 table_entry.size = (dims == 1) ? (4 * dim0_size) : (4 * dim0_size * dim1_size);
-            } else {}
+                table_entry.size += 4; // means the symbol manage such size: array size + pointer size
+            } else if (data_type == DataType::INT_ARR && name[0] == '@'){
+                table_entry.size = 4;
+            } else {
+                add_error("can't parse symbol \" " + name + "\" 's datatype");
+            }
 
             if (func_name.empty()) {
                 global_table_.push_back(table_entry);
@@ -294,7 +299,7 @@ int SymbolTable::get_func_stack_size(const std::string &func_name) {
         std::vector<TableEntry> func_table = func_tables_[func_name];
         for (auto &i: func_table) {
             if (i.symbol_type == SymbolType::PARAM) {
-                func_size += 4; // the param array is just an address
+                func_size += 4; // the param stores a value or an address of an array
             } else {
                 func_size += i.size;
             }
@@ -324,7 +329,7 @@ int SymbolTable::find_str_idx(const std::string& str) {
 }
 
 void SymbolTable::add_error(const std::string& msg) {
-    std::cout << msg << std::endl;
+    std::cout << msg << std::endl << std::endl;
 }
 
 bool SymbolTable::is_global_symbol(std::string sym_name) {
