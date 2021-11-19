@@ -100,12 +100,22 @@ std::string Intermediate::GenWhileEndLabel() {
     return label;
 }
 
+std::string Intermediate::GenCondEndLabel() {
+    std::string label = "Cond_End_Label_" + std::to_string(cond_label_cnt_++);
+    return label;
+}
+
+std::string Intermediate::GenLAndEndLabel() {
+    std::string label = "LAnd_End_Label_" + std::to_string(land_label_cnt++);
+    return label;
+}
+
+
 void Intermediate::codes_to_string() {
     for (auto &interm_code: interm_codes_) {
         out_ << interm_code_to_string(interm_code, true) << std::endl;
     }
 }
-
 
 std::string get_op_string(IntermOp op) {
     std::string str_op;

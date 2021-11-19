@@ -1,3 +1,4 @@
+
 int global_counter = 0;
 int innerProduct(int a[], int b[], int length){
     int i = 0;
@@ -41,35 +42,22 @@ int main(){
 	printVector(a, 10);
 	printVector(b, 10);
 	result = innerProduct(a, b, 10);
-	int INNER_PRODUCT_ANSWER = 324;
-	printf("Inner product: expect %d, output: %d\n", INNER_PRODUCT_ANSWER, result);
-	if(INNER_PRODUCT_ANSWER != result) return 1;
+
+	printf("Inner product: %d\n", result);
+
 
 	scaleBiasCombination(res1, a, 2, b, 3, 4, 10);
-	int SBC1_RESULT[10] = {12, 25, 26, 42, 49, 44, 17, 43, 21, 23};
-	printf("SBC step 1: expect:");
-	printVector(SBC1_RESULT, 10);
-	printf("output:");
+	printf("first scale: \n");
 	printVector(res1, 10);
-	int i = 0;
-	while(i < 10){
-	    if(res1[i] != SBC1_RESULT[i]) return 2;
-	    i = i + 1;
-	}
+
 
 	scaleBiasCombination(res2, res1, 2, b, 3, 4, 10);
-	elementWiseMultiply(res1, res2, b, 10);
-	int FINAL_RESULT[10] = {70, 350, 276, 904, 1170, 666, 144, 784, 50, 54};
-	printf("SBC step 2 and EWM: expect:");
-	printVector(FINAL_RESULT, 10);
-	printf("output:");
-	printVector(res1, 10);
-	i = 0;
-	while(i < 10){
-	    if(res1[i] != FINAL_RESULT[i]) return 3;
-	    i = i + 1;
-	}
+	printf("second scale: \n");
+	printVector(res2, 10);
 
-	printf("\n\n================================================================================\n                                     PASSED                                     \n================================================================================\n");
+	elementWiseMultiply(res1, res2, b, 10);
+	printf("wise multi: \n");
+	printVector(res1, 10);
+
 	return 0;
 }

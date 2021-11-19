@@ -1534,15 +1534,14 @@ std::pair<DataType, std::string> Parser::LOrExp() {
     std::string ret_var_name;
     bool cur_be_parsed_int = false;
     std::pair<DataType, std::string> inner_exp_ret;
+    std::string cond_end_label = intermediate_.GenCondEndLabel();
+
+    ret_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+    local_addr_ += 4;
 
     inner_exp_ret = LAndExp();
     ret_type = inner_exp_ret.first;
-    ret_var_name = inner_exp_ret.second;
-    if (is_integer(ret_var_name)) {
-        cur_be_parsed_int = true;
-    } else {
-        cur_be_parsed_int = false;
-    }
+    intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, inner_exp_ret.second, 0);
 
     next_sym();
     while (type_code_ == TypeCode::OR) {
@@ -1552,21 +1551,12 @@ std::pair<DataType, std::string> Parser::LOrExp() {
         next_sym();
 
         next_sym();
+        intermediate_.AddMidCode(cond_end_label, IntermOp::BNE, ret_var_name, 0); // not equal 0, branch to cond end
         inner_exp_ret = LAndExp();
-        if (cur_be_parsed_int && is_integer(inner_exp_ret.second)) {
-            int parsed_inner_exp_value = std::stoi(inner_exp_ret.second);
-            int cur_parsed_value = std::stoi(ret_var_name);
-            ret_var_name = std::to_string((cur_parsed_value || parsed_inner_exp_value));
-        } else {
-            cur_be_parsed_int = false;
-            std::string tmp_var_name =
-                    intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-            local_addr_ += 4;
-            intermediate_.AddMidCode(tmp_var_name, IntermOp::OR, ret_var_name, inner_exp_ret.second);
-            ret_var_name = tmp_var_name;
-        }
+        intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, inner_exp_ret.second, 0);
         next_sym();
     }
+    intermediate_.AddMidCode(cond_end_label, IntermOp::LABEL, "", "");
     retract();
     output("<LOrExp>");
     return std::make_pair(ret_type, ret_var_name);
@@ -1579,18 +1569,15 @@ std::pair<DataType, std::string> Parser::LOrExp() {
 std::pair<DataType, std::string> Parser::LAndExp() {
     DataType ret_type = DataType::INVALID;
     std::string ret_var_name;
-
-    bool cur_be_parsed_int = false;
     std::pair<DataType, std::string> inner_exp_ret;
+
+    std::string land_end_label = intermediate_.GenLAndEndLabel();
+    ret_var_name = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+    local_addr_ += 4;
+
     inner_exp_ret = EqExp();
     ret_type = inner_exp_ret.first;
-    ret_var_name = inner_exp_ret.second;
-
-    if (is_integer(ret_var_name)) {
-        cur_be_parsed_int = true;
-    } else {
-        cur_be_parsed_int = false;
-    }
+    intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, inner_exp_ret.second, 0);
 
     next_sym();
     while (type_code_ == TypeCode::AND) {
@@ -1600,21 +1587,12 @@ std::pair<DataType, std::string> Parser::LAndExp() {
         next_sym();
 
         next_sym();
+        intermediate_.AddMidCode(land_end_label, IntermOp::BEQ, ret_var_name, 0);
         inner_exp_ret = EqExp();
-        if (cur_be_parsed_int && is_integer(inner_exp_ret.second)) {
-            int parsed_inner_value = std::stoi(inner_exp_ret.second);
-            int cur_parsed_value = std::stoi(ret_var_name);
-            ret_var_name = std::to_string((cur_parsed_value && parsed_inner_value));
-        } else {
-            cur_be_parsed_int = false;
-            std::string tmp_var_name =
-                    intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
-            local_addr_ += 4;
-            intermediate_.AddMidCode(tmp_var_name, IntermOp::AND, ret_var_name, inner_exp_ret.second);
-            ret_var_name = tmp_var_name;
-        }
+        intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, inner_exp_ret.second, 0);
         next_sym();
     }
+    intermediate_.AddMidCode(land_end_label, IntermOp::LABEL, "", "");
     retract();
     output("<LAndExp>");
     return std::make_pair(ret_type, ret_var_name);

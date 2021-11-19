@@ -88,6 +88,8 @@ public:
 
     void move_s_regs_to_memo();
 
+    void move_t_regs_to_memo();
+
     void add_code(const std::string &code);
 
     void add_code(const std::string &op, const std::string &dst, const std::string &src1, const std::string &src2);

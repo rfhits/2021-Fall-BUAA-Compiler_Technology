@@ -84,6 +84,8 @@ private:
     int param_arr_cnt_ = 0;
     int label_cnt_ = 0; // how many labels have been generated
     int while_label_cnt_ = 0;
+    int cond_label_cnt_ = 0;
+    int land_label_cnt = 0;
 
     SymbolTable &symbol_table_;
     std::ofstream &out_;
@@ -108,6 +110,10 @@ public:
     std::string GenWhileBeginLabel();
 
     std::string GenWhileEndLabel();
+
+    std::string GenCondEndLabel();
+
+    std::string GenLAndEndLabel();
 
     void AddMidCode(const std::string &dst, IntermOp op, const std::string &src1, const std::string &src2);
 

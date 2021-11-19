@@ -1,68 +1,84 @@
-    ADD global_counter_1 0 0
+    ADD global_counter_2 0 0
 FUNC_BEGIN innerProduct  
-    ADD i_3 0 0
-    ADD res_4 0 0
+    ADD i_4 0 0
+    ADD res_5 0 0
 While_Begin_Label_0:
-    LSS #Tmp0 i_3 length_2
+    LSS #Tmp2 i_4 length_3
+    ADD #Tmp1 #Tmp2 0
+LAnd_End_Label_0:
+    ADD #Tmp0 #Tmp1 0
+Cond_End_Label_0:
     BEQ While_End_Label_0 #Tmp0 0
-    ARR_LOAD #Tmp1 a_2 i_3
-    ARR_LOAD #Tmp2 b_2 i_3
-    MUL #Tmp3 #Tmp1 #Tmp2
-    ADD #Tmp4 res_4 #Tmp3
-    ADD res_4 #Tmp4 0
-    ADD #Tmp5 i_3 1
-    ADD i_3 #Tmp5 0
+    ARR_LOAD #Tmp3 a_3 i_4
+    ARR_LOAD #Tmp4 b_3 i_4
+    MUL #Tmp5 #Tmp3 #Tmp4
+    ADD #Tmp6 res_5 #Tmp5
+    ADD res_5 #Tmp6 0
+    ADD #Tmp7 i_4 1
+    ADD i_4 #Tmp7 0
     JUMP While_Begin_Label_0  
 While_End_Label_0:
-    RET res_4  
+    RET res_5  
 FUNC_END innerProduct  
 FUNC_BEGIN scaleBiasCombination  
-    ADD i_12 0 0
+    ADD i_13 0 0
 While_Begin_Label_1:
-    LSS #Tmp6 i_12 length_11
-    BEQ While_End_Label_1 #Tmp6 0
-    ARR_LOAD #Tmp7 a_11 i_12
-    MUL #Tmp8 #Tmp7 s1_11
-    ARR_LOAD #Tmp9 b_11 i_12
-    MUL #Tmp10 #Tmp9 s2_11
-    ADD #Tmp11 #Tmp8 #Tmp10
-    ADD #Tmp12 #Tmp11 bias_11
-    ADD #Tmp13 #Tmp12 global_counter_1
-    ARR_SAVE res_11 i_12 #Tmp13
-    ADD #Tmp14 i_12 1
-    ADD i_12 #Tmp14 0
+    LSS #Tmp10 i_13 length_12
+    ADD #Tmp9 #Tmp10 0
+LAnd_End_Label_1:
+    ADD #Tmp8 #Tmp9 0
+Cond_End_Label_1:
+    BEQ While_End_Label_1 #Tmp8 0
+    ARR_LOAD #Tmp11 a_12 i_13
+    MUL #Tmp12 #Tmp11 s1_12
+    ARR_LOAD #Tmp13 b_12 i_13
+    MUL #Tmp14 #Tmp13 s2_12
+    ADD #Tmp15 #Tmp12 #Tmp14
+    ADD #Tmp16 #Tmp15 bias_12
+    ADD #Tmp17 #Tmp16 global_counter_2
+    ARR_SAVE res_12 i_13 #Tmp17
+    ADD #Tmp18 i_13 1
+    ADD i_13 #Tmp18 0
     JUMP While_Begin_Label_1  
 While_End_Label_1:
-    ADD #Tmp15 global_counter_1 1
-    ADD global_counter_1 #Tmp15 0
+    ADD #Tmp19 global_counter_2 1
+    ADD global_counter_2 #Tmp19 0
 FUNC_END scaleBiasCombination  
 FUNC_BEGIN elementWiseMultiply  
-    ADD i_20 0 0
+    ADD i_21 0 0
 While_Begin_Label_2:
-    LSS #Tmp16 i_20 length_19
-    BEQ While_End_Label_2 #Tmp16 0
-    ARR_LOAD #Tmp17 a_19 i_20
-    ARR_LOAD #Tmp18 b_19 i_20
-    MUL #Tmp19 #Tmp17 #Tmp18
-    ARR_SAVE res_19 i_20 #Tmp19
-    ADD #Tmp20 i_20 1
-    ADD i_20 #Tmp20 0
+    LSS #Tmp22 i_21 length_20
+    ADD #Tmp21 #Tmp22 0
+LAnd_End_Label_2:
+    ADD #Tmp20 #Tmp21 0
+Cond_End_Label_2:
+    BEQ While_End_Label_2 #Tmp20 0
+    ARR_LOAD #Tmp23 a_20 i_21
+    ARR_LOAD #Tmp24 b_20 i_21
+    MUL #Tmp25 #Tmp23 #Tmp24
+    ARR_SAVE res_20 i_21 #Tmp25
+    ADD #Tmp26 i_21 1
+    ADD i_21 #Tmp26 0
     JUMP While_Begin_Label_2  
 While_End_Label_2:
 FUNC_END elementWiseMultiply  
 FUNC_BEGIN printVector  
-    ARR_LOAD #Tmp21 vec_26 0
+    ARR_LOAD #Tmp27 vec_27 0
     PRINT [ str 
-    PRINT #Tmp21 int 
-    ADD i_28 1 0
+    PRINT #Tmp27 int 
+    ADD i_29 1 0
 While_Begin_Label_3:
-    LSS #Tmp22 i_28 length_26
-    BEQ While_End_Label_3 #Tmp22 0
-    ARR_LOAD #Tmp23 vec_26 i_28
+    LSS #Tmp30 i_29 length_27
+    ADD #Tmp29 #Tmp30 0
+LAnd_End_Label_3:
+    ADD #Tmp28 #Tmp29 0
+Cond_End_Label_3:
+    BEQ While_End_Label_3 #Tmp28 0
+    ARR_LOAD #Tmp31 vec_27 i_29
     PRINT ,  str 
-    PRINT #Tmp23 int 
-    ADD #Tmp24 i_28 1
-    ADD i_28 #Tmp24 0
+    PRINT #Tmp31 int 
+    ADD #Tmp32 i_29 1
+    ADD i_29 #Tmp32 0
     JUMP While_Begin_Label_3  
 While_End_Label_3:
     PRINT ] str 
@@ -71,382 +87,89 @@ FUNC_END printVector
 FUNC_BEGIN main  
     PRINT 19373384 str 
     PRINT \n str 
-    INIT_ARR_PTR a_37  
-    ARR_SAVE a_37 0 1
-    ARR_SAVE a_37 1 3
-    ARR_SAVE a_37 2 5
-    ARR_SAVE a_37 3 7
-    ARR_SAVE a_37 4 9
-    ARR_SAVE a_37 5 11
-    ARR_SAVE a_37 6 2
-    ARR_SAVE a_37 7 9
-    ARR_SAVE a_37 8 7
-    ARR_SAVE a_37 9 8
-    INIT_ARR_PTR b_38  
-    ARR_SAVE b_38 0 2
-    ARR_SAVE b_38 1 5
-    ARR_SAVE b_38 2 4
-    ARR_SAVE b_38 3 8
-    ARR_SAVE b_38 4 9
-    ARR_SAVE b_38 5 6
-    ARR_SAVE b_38 6 3
-    ARR_SAVE b_38 7 7
-    ARR_SAVE b_38 8 1
-    ARR_SAVE b_38 9 1
-    INIT_ARR_PTR res1_39  
-    INIT_ARR_PTR res2_39  
+    INIT_ARR_PTR a_38  
+    ARR_SAVE a_38 0 1
+    ARR_SAVE a_38 1 3
+    ARR_SAVE a_38 2 5
+    ARR_SAVE a_38 3 7
+    ARR_SAVE a_38 4 9
+    ARR_SAVE a_38 5 11
+    ARR_SAVE a_38 6 2
+    ARR_SAVE a_38 7 9
+    ARR_SAVE a_38 8 7
+    ARR_SAVE a_38 9 8
+    INIT_ARR_PTR b_39  
+    ARR_SAVE b_39 0 2
+    ARR_SAVE b_39 1 5
+    ARR_SAVE b_39 2 4
+    ARR_SAVE b_39 3 8
+    ARR_SAVE b_39 4 9
+    ARR_SAVE b_39 5 6
+    ARR_SAVE b_39 6 3
+    ARR_SAVE b_39 7 7
+    ARR_SAVE b_39 8 1
+    ARR_SAVE b_39 9 1
+    INIT_ARR_PTR res1_40  
+    INIT_ARR_PTR res2_40  
     PREPARE_CALL printVector  
-    PUSH_ARR a_37 0 
+    PUSH_ARR a_38 0 
     PUSH_VAL 10 1 
     CALL printVector  
     PREPARE_CALL printVector  
-    PUSH_ARR b_38 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    PREPARE_CALL innerProduct  
-    PUSH_ARR a_37 0 
-    PUSH_ARR b_38 1 
-    PUSH_VAL 10 2 
-    CALL innerProduct  
-    ADD #Tmp25 %RET 0
-    ADD result_40 #Tmp25 0
-    ADD INNER_PRODUCT_ANSWER_44 324 0
-    PRINT Inner product: expect  str 
-    PRINT INNER_PRODUCT_ANSWER_44 int 
-    PRINT , output:  str 
-    PRINT result_40 int 
-    PRINT \n str 
-    NEQ #Tmp26 INNER_PRODUCT_ANSWER_44 result_40
-    BEQ Label_0 #Tmp26 0
-    RET 1  
-Label_0:
-    PREPARE_CALL scaleBiasCombination  
-    PUSH_ARR res1_39 0 
-    PUSH_ARR a_37 1 
-    PUSH_VAL 2 2 
-    PUSH_ARR b_38 3 
-    PUSH_VAL 3 4 
-    PUSH_VAL 4 5 
-    PUSH_VAL 10 6 
-    CALL scaleBiasCombination  
-    INIT_ARR_PTR SBC1_RESULT_49  
-    ARR_SAVE SBC1_RESULT_49 0 12
-    ARR_SAVE SBC1_RESULT_49 1 25
-    ARR_SAVE SBC1_RESULT_49 2 26
-    ARR_SAVE SBC1_RESULT_49 3 42
-    ARR_SAVE SBC1_RESULT_49 4 49
-    ARR_SAVE SBC1_RESULT_49 5 44
-    ARR_SAVE SBC1_RESULT_49 6 17
-    ARR_SAVE SBC1_RESULT_49 7 43
-    ARR_SAVE SBC1_RESULT_49 8 21
-    ARR_SAVE SBC1_RESULT_49 9 23
-    PRINT SBC step 1: expect: str 
-    PREPARE_CALL printVector  
-    PUSH_ARR SBC1_RESULT_49 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    PRINT output: str 
-    PREPARE_CALL printVector  
-    PUSH_ARR res1_39 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    ADD i_54 0 0
-While_Begin_Label_4:
-    LSS #Tmp27 i_54 10
-    BEQ While_End_Label_4 #Tmp27 0
-    ARR_LOAD #Tmp28 res1_39 i_54
-    ARR_LOAD #Tmp29 SBC1_RESULT_49 i_54
-    NEQ #Tmp30 #Tmp28 #Tmp29
-    BEQ Label_1 #Tmp30 0
-    RET 2  
-Label_1:
-    ADD #Tmp31 i_54 1
-    ADD i_54 #Tmp31 0
-    JUMP While_Begin_Label_4  
-While_End_Label_4:
-    PREPARE_CALL scaleBiasCombination  
-    PUSH_ARR res2_39 0 
-    PUSH_ARR res1_39 1 
-    PUSH_VAL 2 2 
-    PUSH_ARR b_38 3 
-    PUSH_VAL 3 4 
-    PUSH_VAL 4 5 
-    PUSH_VAL 10 6 
-    CALL scaleBiasCombination  
-    PREPARE_CALL elementWiseMultiply  
-    PUSH_ARR res1_39 0 
-    PUSH_ARR res2_39 1 
-    PUSH_ARR b_38 2 
-    PUSH_VAL 10 3 
-    CALL elementWiseMultiply  
-    INIT_ARR_PTR FINAL_RESULT_62  
-    ARR_SAVE FINAL_RESULT_62 0 70
-    ARR_SAVE FINAL_RESULT_62 1 350
-    ARR_SAVE FINAL_RESULT_62 2 276
-    ARR_SAVE FINAL_RESULT_62 3 904
-    ARR_SAVE FINAL_RESULT_62 4 1170
-    ARR_SAVE FINAL_RESULT_62 5 666
-    ARR_SAVE FINAL_RESULT_62 6 144
-    ARR_SAVE FINAL_RESULT_62 7 784
-    ARR_SAVE FINAL_RESULT_62 8 50
-    ARR_SAVE FINAL_RESULT_62 9 54
-    PRINT SBC step 2 and EWM: expect: str 
-    PREPARE_CALL printVector  
-    PUSH_ARR FINAL_RESULT_62 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    PRINT output: str 
-    PREPARE_CALL printVector  
-    PUSH_ARR res1_39 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    ADD i_54 0 0
-While_Begin_Label_5:
-    LSS #Tmp32 i_54 10
-    BEQ While_End_Label_5 #Tmp32 0
-    ARR_LOAD #Tmp33 res1_39 i_54
-    ARR_LOAD #Tmp34 FINAL_RESULT_62 i_54
-    NEQ #Tmp35 #Tmp33 #Tmp34
-    BEQ Label_2 #Tmp35 0
-    RET 3  
-Label_2:
-    ADD #Tmp36 i_54 1
-    ADD i_54 #Tmp36 0
-    JUMP While_Begin_Label_5  
-While_End_Label_5:
-    PRINT \n str 
-    PRINT \n str 
-    PRINT ================================================================================ str 
-    PRINT \n str 
-    PRINT                                      PASSED                                      str 
-    PRINT \n str 
-    PRINT ================================================================================ str 
-    PRINT \n str 
-    RET 0  
-FUNC_END main  
-    ADD global_counter_1 0 0
-FUNC_BEGIN innerProduct  
-    ADD i_3 0 0
-    ADD res_4 0 0
-While_Begin_Label_0:
-    LSS #Tmp0 i_3 length_2
-    BEQ While_End_Label_0 #Tmp0 0
-    ARR_LOAD #Tmp1 a_2 i_3
-    ARR_LOAD #Tmp2 b_2 i_3
-    MUL #Tmp3 #Tmp1 #Tmp2
-    ADD #Tmp4 res_4 #Tmp3
-    ADD res_4 #Tmp4 0
-    ADD #Tmp5 i_3 1
-    ADD i_3 #Tmp5 0
-    JUMP While_Begin_Label_0  
-While_End_Label_0:
-    RET res_4  
-FUNC_END innerProduct  
-FUNC_BEGIN scaleBiasCombination  
-    ADD i_12 0 0
-While_Begin_Label_1:
-    LSS #Tmp6 i_12 length_11
-    BEQ While_End_Label_1 #Tmp6 0
-    ARR_LOAD #Tmp7 a_11 i_12
-    MUL #Tmp8 #Tmp7 s1_11
-    ARR_LOAD #Tmp9 b_11 i_12
-    MUL #Tmp10 #Tmp9 s2_11
-    ADD #Tmp11 #Tmp8 #Tmp10
-    ADD #Tmp12 #Tmp11 bias_11
-    ADD #Tmp13 #Tmp12 global_counter_1
-    ARR_SAVE res_11 i_12 #Tmp13
-    ADD #Tmp14 i_12 1
-    ADD i_12 #Tmp14 0
-    JUMP While_Begin_Label_1  
-While_End_Label_1:
-    ADD #Tmp15 global_counter_1 1
-    ADD global_counter_1 #Tmp15 0
-FUNC_END scaleBiasCombination  
-FUNC_BEGIN elementWiseMultiply  
-    ADD i_20 0 0
-While_Begin_Label_2:
-    LSS #Tmp16 i_20 length_19
-    BEQ While_End_Label_2 #Tmp16 0
-    ARR_LOAD #Tmp17 a_19 i_20
-    ARR_LOAD #Tmp18 b_19 i_20
-    MUL #Tmp19 #Tmp17 #Tmp18
-    ARR_SAVE res_19 i_20 #Tmp19
-    ADD #Tmp20 i_20 1
-    ADD i_20 #Tmp20 0
-    JUMP While_Begin_Label_2  
-While_End_Label_2:
-FUNC_END elementWiseMultiply  
-FUNC_BEGIN printVector  
-    ARR_LOAD #Tmp21 vec_26 0
-    PRINT [ str 
-    PRINT #Tmp21 int 
-    ADD i_28 1 0
-While_Begin_Label_3:
-    LSS #Tmp22 i_28 length_26
-    BEQ While_End_Label_3 #Tmp22 0
-    ARR_LOAD #Tmp23 vec_26 i_28
-    PRINT ,  str 
-    PRINT #Tmp23 int 
-    ADD #Tmp24 i_28 1
-    ADD i_28 #Tmp24 0
-    JUMP While_Begin_Label_3  
-While_End_Label_3:
-    PRINT ] str 
-    PRINT \n str 
-FUNC_END printVector  
-FUNC_BEGIN main  
-    PRINT 19373384 str 
-    PRINT \n str 
-    INIT_ARR_PTR a_37  
-    ARR_SAVE a_37 0 1
-    ARR_SAVE a_37 1 3
-    ARR_SAVE a_37 2 5
-    ARR_SAVE a_37 3 7
-    ARR_SAVE a_37 4 9
-    ARR_SAVE a_37 5 11
-    ARR_SAVE a_37 6 2
-    ARR_SAVE a_37 7 9
-    ARR_SAVE a_37 8 7
-    ARR_SAVE a_37 9 8
-    INIT_ARR_PTR b_38  
-    ARR_SAVE b_38 0 2
-    ARR_SAVE b_38 1 5
-    ARR_SAVE b_38 2 4
-    ARR_SAVE b_38 3 8
-    ARR_SAVE b_38 4 9
-    ARR_SAVE b_38 5 6
-    ARR_SAVE b_38 6 3
-    ARR_SAVE b_38 7 7
-    ARR_SAVE b_38 8 1
-    ARR_SAVE b_38 9 1
-    INIT_ARR_PTR res1_39  
-    INIT_ARR_PTR res2_39  
-    PREPARE_CALL printVector  
-    PUSH_ARR a_37 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    PREPARE_CALL printVector  
-    PUSH_ARR b_38 0 
+    PUSH_ARR b_39 0 
     PUSH_VAL 10 1 
     CALL printVector  
     PREPARE_CALL innerProduct  
-    PUSH_ARR a_37 0 
-    PUSH_ARR b_38 1 
+    PUSH_ARR a_38 0 
+    PUSH_ARR b_39 1 
     PUSH_VAL 10 2 
     CALL innerProduct  
-    ADD #Tmp25 %RET 0
-    ADD result_40 #Tmp25 0
-    ADD INNER_PRODUCT_ANSWER_44 324 0
-    PRINT Inner product: expect  str 
-    PRINT INNER_PRODUCT_ANSWER_44 int 
-    PRINT , output:  str 
-    PRINT result_40 int 
+    ADD #Tmp33 %RET 0
+    ADD result_41 #Tmp33 0
+    PRINT Inner product:  str 
+    PRINT result_41 int 
     PRINT \n str 
-    NEQ #Tmp26 INNER_PRODUCT_ANSWER_44 result_40
-    BEQ Label_0 #Tmp26 0
-    RET 1  
-Label_0:
     PREPARE_CALL scaleBiasCombination  
-    PUSH_ARR res1_39 0 
-    PUSH_ARR a_37 1 
+    PUSH_ARR res1_40 0 
+    PUSH_ARR a_38 1 
     PUSH_VAL 2 2 
-    PUSH_ARR b_38 3 
+    PUSH_ARR b_39 3 
     PUSH_VAL 3 4 
     PUSH_VAL 4 5 
     PUSH_VAL 10 6 
     CALL scaleBiasCombination  
-    INIT_ARR_PTR SBC1_RESULT_49  
-    ARR_SAVE SBC1_RESULT_49 0 12
-    ARR_SAVE SBC1_RESULT_49 1 25
-    ARR_SAVE SBC1_RESULT_49 2 26
-    ARR_SAVE SBC1_RESULT_49 3 42
-    ARR_SAVE SBC1_RESULT_49 4 49
-    ARR_SAVE SBC1_RESULT_49 5 44
-    ARR_SAVE SBC1_RESULT_49 6 17
-    ARR_SAVE SBC1_RESULT_49 7 43
-    ARR_SAVE SBC1_RESULT_49 8 21
-    ARR_SAVE SBC1_RESULT_49 9 23
-    PRINT SBC step 1: expect: str 
+    PRINT first scale:  str 
+    PRINT \n str 
     PREPARE_CALL printVector  
-    PUSH_ARR SBC1_RESULT_49 0 
+    PUSH_ARR res1_40 0 
     PUSH_VAL 10 1 
     CALL printVector  
-    PRINT output: str 
-    PREPARE_CALL printVector  
-    PUSH_ARR res1_39 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    ADD i_54 0 0
-While_Begin_Label_4:
-    LSS #Tmp27 i_54 10
-    BEQ While_End_Label_4 #Tmp27 0
-    ARR_LOAD #Tmp28 res1_39 i_54
-    ARR_LOAD #Tmp29 SBC1_RESULT_49 i_54
-    NEQ #Tmp30 #Tmp28 #Tmp29
-    BEQ Label_1 #Tmp30 0
-    RET 2  
-Label_1:
-    ADD #Tmp31 i_54 1
-    ADD i_54 #Tmp31 0
-    JUMP While_Begin_Label_4  
-While_End_Label_4:
     PREPARE_CALL scaleBiasCombination  
-    PUSH_ARR res2_39 0 
-    PUSH_ARR res1_39 1 
+    PUSH_ARR res2_40 0 
+    PUSH_ARR res1_40 1 
     PUSH_VAL 2 2 
-    PUSH_ARR b_38 3 
+    PUSH_ARR b_39 3 
     PUSH_VAL 3 4 
     PUSH_VAL 4 5 
     PUSH_VAL 10 6 
     CALL scaleBiasCombination  
+    PRINT second scale:  str 
+    PRINT \n str 
+    PREPARE_CALL printVector  
+    PUSH_ARR res2_40 0 
+    PUSH_VAL 10 1 
+    CALL printVector  
     PREPARE_CALL elementWiseMultiply  
-    PUSH_ARR res1_39 0 
-    PUSH_ARR res2_39 1 
-    PUSH_ARR b_38 2 
+    PUSH_ARR res1_40 0 
+    PUSH_ARR res2_40 1 
+    PUSH_ARR b_39 2 
     PUSH_VAL 10 3 
     CALL elementWiseMultiply  
-    INIT_ARR_PTR FINAL_RESULT_62  
-    ARR_SAVE FINAL_RESULT_62 0 70
-    ARR_SAVE FINAL_RESULT_62 1 350
-    ARR_SAVE FINAL_RESULT_62 2 276
-    ARR_SAVE FINAL_RESULT_62 3 904
-    ARR_SAVE FINAL_RESULT_62 4 1170
-    ARR_SAVE FINAL_RESULT_62 5 666
-    ARR_SAVE FINAL_RESULT_62 6 144
-    ARR_SAVE FINAL_RESULT_62 7 784
-    ARR_SAVE FINAL_RESULT_62 8 50
-    ARR_SAVE FINAL_RESULT_62 9 54
-    PRINT SBC step 2 and EWM: expect: str 
+    PRINT wise multi:  str 
+    PRINT \n str 
     PREPARE_CALL printVector  
-    PUSH_ARR FINAL_RESULT_62 0 
+    PUSH_ARR res1_40 0 
     PUSH_VAL 10 1 
     CALL printVector  
-    PRINT output: str 
-    PREPARE_CALL printVector  
-    PUSH_ARR res1_39 0 
-    PUSH_VAL 10 1 
-    CALL printVector  
-    ADD i_54 0 0
-While_Begin_Label_5:
-    LSS #Tmp32 i_54 10
-    BEQ While_End_Label_5 #Tmp32 0
-    ARR_LOAD #Tmp33 res1_39 i_54
-    ARR_LOAD #Tmp34 FINAL_RESULT_62 i_54
-    NEQ #Tmp35 #Tmp33 #Tmp34
-    BEQ Label_2 #Tmp35 0
-    RET 3  
-Label_2:
-    ADD #Tmp36 i_54 1
-    ADD i_54 #Tmp36 0
-    JUMP While_Begin_Label_5  
-While_End_Label_5:
-    PRINT \n str 
-    PRINT \n str 
-    PRINT ================================================================================ str 
-    PRINT \n str 
-    PRINT                                      PASSED                                      str 
-    PRINT \n str 
-    PRINT ================================================================================ str 
-    PRINT \n str 
     RET 0  
 FUNC_END main  
