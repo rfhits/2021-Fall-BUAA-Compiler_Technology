@@ -3,6 +3,7 @@
 cmake-build-debug
 CMakeLists.txt
 
+# local test files
 testfiles
 testfile.txt
 output.txt
