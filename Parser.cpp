@@ -713,14 +713,17 @@ std::pair<DataType, std::string> Parser::CallFunc() {
     int provide_param_num = 0;
 
     next_sym(); // now at '('
+    // check if is recursive function
+
+    if (cur_func_name_ == called_func_name) symbol_table_.SetRecurFunc(called_func_name);
+
     auto search_res = symbol_table_.SearchFunc(called_func_name);
     if (search_res.first) {
-        intermediate_.AddMidCode(called_func_name, IntermOp::PREPARE_CALL, "", ""); // prepare call
-
         need_param_num = search_res.second->value;
         ret_type = search_res.second->data_type;
         next_sym();
         if (type_code_ == TypeCode::RPARENT) { // no params
+            intermediate_.AddMidCode(called_func_name, IntermOp::PREPARE_CALL, "", ""); // prepare call
             if (need_param_num != 0) add_error(func_name_line, ErrorType::ARG_NO_MISMATCH);
         } else { // call has params function
             // (
@@ -729,6 +732,7 @@ std::pair<DataType, std::string> Parser::CallFunc() {
             // already read a token
             if (first_exp.count(type_code_) != 0) {
                 std::vector<std::pair<DataType, std::string>> param_list = FuncRParams();
+                intermediate_.AddMidCode(called_func_name, IntermOp::PREPARE_CALL, "", ""); // prepare call
                 provide_param_num = param_list.size();
                 bool has_arg_type_error = false;
                 for (int i = 0; i < need_param_num && i < provide_param_num; i++) {
@@ -750,7 +754,6 @@ std::pair<DataType, std::string> Parser::CallFunc() {
                             intermediate_.AddMidCode(param_name,
                                                      IntermOp::PUSH_VAL, std::to_string(i), "");
                         }
-
                     }
                 }
                 if (need_param_num != provide_param_num) add_error(func_name_line, ErrorType::ARG_NO_MISMATCH);
@@ -1201,6 +1204,7 @@ void Parser::FuncFParam(int param_ord) {
         }
         if (dims_ != 0) param_type = DataType::INT_ARR;
         // u have to fill the dim1_size, because it will be used in assign or fetch
+        // the dim0 size is 0 now
         if (!symbol_table_.AddSymbol(cur_func_name_, param_type, SymbolType::PARAM,
                                      name_, alias_,
                                      param_ord, cur_level_, dims_, dim0_size_, dim1_size_, local_addr_)) {

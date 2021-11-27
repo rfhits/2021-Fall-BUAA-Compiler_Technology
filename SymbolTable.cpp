@@ -69,7 +69,7 @@ std::pair<bool, TableEntry *> SymbolTable::SearchNearestSymbolNotFunc(
 //                // pass
 //            }
 //        }
-        for (auto &i : global_table_) {
+        for (auto &i: global_table_) {
             if (i.name == name && (i.symbol_type != SymbolType::FUNC)) {
                 return std::make_pair(true, &i);
             }
@@ -78,7 +78,7 @@ std::pair<bool, TableEntry *> SymbolTable::SearchNearestSymbolNotFunc(
     } else {
         auto it = func_tables_.find(func_name);
         if (it != func_tables_.end()) {
-            for(auto entry_it = it->second.rbegin(); entry_it != it->second.rend(); entry_it++) {
+            for (auto entry_it = it->second.rbegin(); entry_it != it->second.rend(); entry_it++) {
                 if (entry_it->name == name) {
                     return std::make_pair(true, &(*entry_it));
                 }
@@ -118,6 +118,18 @@ bool SymbolTable::AddFunc(DataType data_type, const std::string &func_name, int 
         return true;
     }
 }
+
+void SymbolTable::SetRecurFunc(const std::string &func_name) {
+    for (auto &entry: global_table_) {
+        if (entry.name == func_name && entry.symbol_type == SymbolType::FUNC) {
+            entry.is_recur_func = true;
+        } else {
+            // pass
+        }
+    }
+
+}
+
 
 // @brief: change the symbol's name of the level to its alias
 // @pre: this function is called after parsing a block inside function body
@@ -192,7 +204,7 @@ bool SymbolTable::AddConstArray(const std::string &cur_func_name, const std::str
 void SymbolTable::show_table() {
     std::cout << "symbol table" << std::endl;
     std::cout << "global_table: " << std::endl;
-    std::cout << "sym_type | data_type | name | value | dims | level | size | addr" << std::endl;
+    std::cout << "sym_type | data_type | name | value | dims | level | size | addr | is_recur" << std::endl;
 
     for (int i = 0; i < global_table_.size(); i++) {
         std::cout << entry_to_string(&global_table_[i]) << std::endl;
@@ -223,6 +235,8 @@ std::string SymbolTable::entry_to_string(TableEntry *entry) {
     str += std::to_string(entry->size);
     str += " | ";
     str += std::to_string(entry->addr);
+    str += " | ";
+    str += std::to_string(entry->is_recur_func);
     return str;
 }
 
@@ -257,7 +271,7 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
             } else if (data_type == DataType::INT_ARR && name[0] != '@') {
                 table_entry.size = (dims == 1) ? (4 * dim0_size) : (4 * dim0_size * dim1_size);
                 table_entry.size += 4; // means the symbol manage such size: array size + pointer size
-            } else if (data_type == DataType::INT_ARR && name[0] == '@'){
+            } else if (data_type == DataType::INT_ARR && name[0] == '@') {
                 table_entry.size = 4;
             } else {
                 add_error("can't parse symbol \" " + name + "\" 's datatype");
@@ -277,7 +291,7 @@ SymbolTable::AddSymbol(const std::string &func_name, DataType data_type, SymbolT
 
 int SymbolTable::get_global_data_size() {
     int global_size = 0;
-    for (auto &i : global_table_) {
+    for (auto &i: global_table_) {
         if (i.symbol_type == SymbolType::VAR || i.symbol_type == SymbolType::CONST) {
             global_size += i.size; // the param array is just an address
         }
@@ -286,31 +300,29 @@ int SymbolTable::get_global_data_size() {
 }
 
 
-
 // @brief: the memory the function need
 // @exec: can't find function
-int SymbolTable::get_func_stack_size(const std::string &func_name) {
+int SymbolTable::GetFuncStackSize(const std::string &func_name) {
     std::pair<bool, TableEntry *> search_res = SearchFunc(func_name);
     if (!search_res.first) {
-        std::cout << "can't find func" << std::endl;
+        std::cout << "can't find func while getting its stack size" << std::endl;
         return 0;
     } else {
         int func_size = 0;
         std::vector<TableEntry> func_table = func_tables_[func_name];
-        for (auto &i: func_table) {
-            if (i.symbol_type == SymbolType::PARAM) {
-                func_size += 4; // the param stores a value or an address of an array
-            } else {
-                func_size += i.size;
-            }
+        int i = func_table.size();
+        if (i == 0) {
+            return 0;
+        } else {
+            func_size = func_table[i - 1].size + func_table[i - 1].addr;
+            return func_size;
         }
-        return func_size;
     }
 }
 
-void SymbolTable::add_to_strcons(const std::string& str) {
+void SymbolTable::add_to_strcons(const std::string &str) {
     if (str == "%d") return;
-    for (auto & strcon : strcons_) {
+    for (auto &strcon: strcons_) {
         if (strcon == str) {
             return;
         }
@@ -318,22 +330,22 @@ void SymbolTable::add_to_strcons(const std::string& str) {
     strcons_.push_back(str);
 }
 
-int SymbolTable::find_str_idx(const std::string& str) {
+int SymbolTable::find_str_idx(const std::string &str) {
     auto it = std::find(strcons_.begin(), strcons_.end(), str);
     if (it != strcons_.end()) {
-        return it-strcons_.begin();
+        return it - strcons_.begin();
     } else {
         add_error("can't find " + str + " in strcons");
         return -1;
     }
 }
 
-void SymbolTable::add_error(const std::string& msg) {
+void SymbolTable::add_error(const std::string &msg) {
     std::cout << msg << std::endl << std::endl;
 }
 
 bool SymbolTable::is_global_symbol(std::string sym_name) {
-    std::pair<bool, TableEntry*> search_res = SearchSymbolInLevel("", 0, sym_name);
+    std::pair<bool, TableEntry *> search_res = SearchSymbolInLevel("", 0, sym_name);
     if (search_res.first) return true;
     else return false;
 }

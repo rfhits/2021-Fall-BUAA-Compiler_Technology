@@ -73,6 +73,9 @@ struct IntermCode {
     IntermOp op;
     std::string src1;
     std::string src2;
+    IntermCode(){};
+    IntermCode(IntermOp op, std::string dst, std::string src1, std::string src2):
+        op(op), dst(std::move(dst)), src1(std::move(src1)), src2(std::move(src2)) {}
 };
 
 std::string interm_code_to_string(const IntermCode& code, bool tab);
@@ -86,11 +89,12 @@ private:
     int while_label_cnt_ = 0;
     int cond_label_cnt_ = 0;
     int land_label_cnt = 0;
+    int inline_times = 0;
 
     SymbolTable &symbol_table_;
     std::ofstream &out_;
 
-
+    void handle_error(std::string msg);
 
 public:
     std::vector<IntermCode> interm_codes_;
@@ -123,7 +127,10 @@ public:
 
     void AddMidCode(const std::string &dst, IntermOp op, int src1, int src2);
 
-    void interpret();
+    std::string rename_inline_symbol(std::string caller_name, std::string callee_name, std::string symbol_name);
+
+    void InlineFunc();
+
 };
 
 #endif //INC_2021_FALL_BUAA_COMPILER_TECHNOLOGY_INTERMEDIATE_H

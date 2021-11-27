@@ -47,6 +47,7 @@ struct TableEntry {
     int level;
     unsigned int addr;
     int size;
+    bool is_recur_func = false;
     std::vector<int> array_values; // array const
     TableEntry(){};
     TableEntry(TableEntry* entry_ptr) {
@@ -86,6 +87,8 @@ public:
 
     bool AddFunc(DataType data_type,const std::string& func_name, int value);
 
+    void SetRecurFunc(const std::string &func_name);
+
     bool AddSymbol(const std::string& func_name, DataType data_type, SymbolType sym_type,
                    const std::string& name, const std::string& alias,
                    int value, int level, int dims, int dim0_size, int dim1_size, unsigned int addr);
@@ -99,7 +102,7 @@ public:
 
     int get_global_data_size();
 
-    int get_func_stack_size(const std::string& func_name);
+    int GetFuncStackSize(const std::string& func_name);
 
     void add_to_strcons(const std::string& str);
 
