@@ -4,7 +4,6 @@
 
 #include "Intermediate.h"
 
-#define INTERM_DUG true
 
 bool is_arith(IntermOp op) {
     if (op == IntermOp::ADD || op == IntermOp::SUB || op == IntermOp::MUL || op == IntermOp::DIV ||
@@ -60,13 +59,7 @@ void Intermediate::AddMidCode(const std::string &dst, IntermOp op, const std::st
     interm_code.op = op;
     interm_code.src1 = src1;
     interm_code.src2 = src2;
-    if (INTERM_DUG) {
-        out_ << interm_code_to_string(interm_code, true) << std::endl;
-        interm_codes_.push_back(interm_code);
-    } else {
-        interm_codes_.push_back(interm_code);
-    }
-
+    codes_.push_back(interm_code);
 }
 
 void Intermediate::AddMidCode(const std::string &dst, IntermOp op, int src1, const std::string &src2) {
@@ -111,37 +104,47 @@ std::string Intermediate::GenLAndEndLabel() {
 }
 
 
-void Intermediate::codes_to_string() {
-    for (auto &interm_code: interm_codes_) {
+void Intermediate::OutputCodes() {
+    for (auto &interm_code: codes_) {
         out_ << interm_code_to_string(interm_code, true) << std::endl;
     }
 }
 
+
+void Intermediate::OutputCodes(std::ofstream& out) {
+    for (auto &code: codes_) {
+        out << interm_code_to_string(code, true) << std::endl;
+    }
+}
+
+
 void Intermediate::InlineFunc() {
-    std::vector<IntermCode> new_interm_codes;
+    std::vector<IntermCode> new_codes;
     std::map<std::string, std::vector<IntermCode>> func_interm_codes;
     std::string cur_func;
-    // fill each function codes
-    for (int i = 0; i < interm_codes_.size(); i++) {
-        if (interm_codes_[i].op == IntermOp::FUNC_BEGIN) {
-            cur_func = interm_codes_[i].dst;
+
+    // fill each function's codes
+    for (int i = 0; i < codes_.size(); i++) {
+        if (codes_[i].op == IntermOp::FUNC_BEGIN) {
+            cur_func = codes_[i].dst;
             func_interm_codes[cur_func] = std::vector<IntermCode>();
-        } else if (interm_codes_[i].op == IntermOp::FUNC_END) {
+        } else if (codes_[i].op == IntermOp::FUNC_END) {
             cur_func = "";
         } else if (!cur_func.empty()) {
-            func_interm_codes[cur_func].push_back(interm_codes_[i]);
+            func_interm_codes[cur_func].push_back(codes_[i]);
         } else {
             // pass
         }
     }
 
     // inline begin
-    std::string caller_name = "";
+    std::string caller_name;
     std::string inline_callee_name;
     std::vector<std::string> inline_callee_stack;
-    for (auto &code: interm_codes_) {
+    for (auto &code: codes_) {
         if (code.op == IntermOp::FUNC_BEGIN) {
             caller_name = code.dst;
+            new_codes.emplace_back(code);
         }
             // prepare call, check if is inline-able
         else if (code.op == IntermOp::PREPARE_CALL) {
@@ -151,7 +154,7 @@ void Intermediate::InlineFunc() {
             if (!search_res.second->is_recur_func && func_interm_codes[callee_name].size() <= 30) {
                 inline_callee_name = code.dst;
                 inline_callee_stack.push_back(code.dst);
-                inline_times += 1;
+                inline_times_ += 1;
             } else {
                 // pass
             }
@@ -160,63 +163,112 @@ void Intermediate::InlineFunc() {
         else if (code.op == IntermOp::PUSH_VAL && !inline_callee_stack.empty()) {
             int param_order = std::stoi(code.src1);
             TableEntry *param = symbol_table_.GetKthParam(inline_callee_name, param_order);
-            std::string new_param_name = param->name + "_" + std::to_string(inline_times);
+            std::string new_param_name = param->name + "_" + std::to_string(inline_times_);
             int caller_stack_size = symbol_table_.GetFuncStackSize(caller_name);
-            int addr = caller_stack_size + 4;
+            int addr = caller_stack_size;
             symbol_table_.AddSymbol(caller_name, param->data_type, SymbolType::VAR, new_param_name, new_param_name,
                                     param->value, param->level, param->dims, param->dim0_size, param->dim1_size, addr);
-            new_interm_codes.emplace_back(IntermOp::ADD, new_param_name, code.dst, "0");
+            new_codes.emplace_back(IntermOp::ADD, new_param_name, code.dst, "0");
         }
             // inline PUSH_ARR
             // todo: is push_arr and push_val different?
         else if (code.op == IntermOp::PUSH_ARR && !inline_callee_stack.empty()) {
             int param_order = std::stoi(code.src1);
             TableEntry *param = symbol_table_.GetKthParam(inline_callee_name, param_order);
-            std::string new_param_name = param->name + "_" + std::to_string(inline_times);
+            std::string new_param_name = param->name + "_" + std::to_string(inline_times_);
             int caller_stack_size = symbol_table_.GetFuncStackSize(caller_name);
-            int addr = caller_stack_size + 4;
+            int addr = caller_stack_size;
             symbol_table_.AddSymbol(caller_name, param->data_type, SymbolType::VAR, new_param_name, new_param_name,
                                     param->value, param->level, param->dims, param->dim0_size, param->dim1_size, addr);
-            new_interm_codes.emplace_back(IntermOp::ADD, new_param_name, code.dst, "0");
+            new_codes.emplace_back(IntermOp::ADD, new_param_name, code.dst, "0");
         }
             // inline call
-        else if (code.op == IntermOp::CALL) {
-            std::string label = inline_callee_name + "_INLINE_END_" + std::to_string(inline_times);
-            for (auto &func_code: func_interm_codes[caller_name]) {
-                std::string renamed_dst = "";
+        else if (code.op == IntermOp::CALL && !inline_callee_stack.empty()) {
+            std::string inline_func_end_label = inline_callee_name + "_INLINE_END_" + std::to_string(inline_times_);
+            for (auto &func_code: func_interm_codes[inline_callee_name]) {
+                std::string re_dst, re_src1, re_src2;
+                IntermOp op = func_code.op;
+                std::string dst = func_code.dst;
+                std::string src1 = func_code.src1;
+                std::string src2 = func_code.src2;
+                if (op == IntermOp::PRINT) {
+                    if (src1 == "int") {
+                        re_dst = rename_inline_symbol(caller_name, inline_callee_name, dst);
+                        new_codes.emplace_back(IntermOp::PRINT, re_dst, "int", "");
+                    } else {
+                        new_codes.emplace_back(func_code);
+                    }
+                }
+                    // LABEL, direct rename here, because label do not in symbol table
+                else if (op == IntermOp::LABEL || op == IntermOp::JUMP) {
+                    re_dst = dst + "_" + std::to_string(inline_times_);
+                    new_codes.emplace_back(op, re_dst, "", "");
+                } else if (op == IntermOp::BEQ || op == IntermOp::BNE) {
+                    re_dst = dst + "_" + std::to_string(inline_times_);
+                    re_src1 = rename_inline_symbol(caller_name, inline_callee_name, src1);
+                    re_src2 = rename_inline_symbol(caller_name, inline_callee_name, src2);
+                    new_codes.emplace_back(op, re_dst, re_src1, re_src2);
+                }
+                    // RET
+                else if (op == IntermOp::RET) {
+                    if (dst.empty()) { // return void;
+                        new_codes.emplace_back(IntermOp::JUMP, inline_func_end_label, "", "");
+                    } else {
+                        re_dst = rename_inline_symbol(caller_name, inline_callee_name, dst);
+                        new_codes.emplace_back(IntermOp::ADD, "%RET", re_dst, "0");
+                        new_codes.emplace_back(IntermOp::JUMP, inline_func_end_label, "", "");
+                    }
+                }
+                    // arith, rel, INIT, arr
+                else {
+                    re_dst = rename_inline_symbol(caller_name, inline_callee_name, dst);
+                    re_src1 = rename_inline_symbol(caller_name, inline_callee_name, src1);
+                    re_src2 = rename_inline_symbol(caller_name, inline_callee_name, src2);
+                    new_codes.emplace_back(op, re_dst, re_src1, re_src2);
+                }
             }
-        } else {
-
+            new_codes.emplace_back(IntermOp::JUMP, inline_func_end_label, "", "");
+            new_codes.emplace_back(IntermOp::LABEL, inline_func_end_label, "", "");
+            inline_callee_stack.pop_back();
+            if (inline_callee_stack.empty()) {
+                inline_callee_name = "";
+            } else {
+                inline_callee_name = inline_callee_stack.back();
+            }
+        }
+            //
+        else {
+            new_codes.emplace_back(code);
         }
     }
-
-
+    codes_ = new_codes;
 }
 
 // @brief: rename the callee function symbols into caller function symbol table
-//         if the symbol is param, just add the inline_times, we promise it has been inject into the caller symbol table
+//         if the symbol is param, just add the inline_times_, we promise it has been inject into the caller symbol table
 //         else we need to check if it has been written to the caller symbol table
 // @attention: u need to check if it is renamed into the caller's symbol table
 std::string
-Intermediate::rename_inline_symbol(std::string caller_name, std::string callee_name, std::string symbol_name) {
-
+Intermediate::rename_inline_symbol(const std::string &caller_name, const std::string &callee_name,
+                                   std::string symbol_name) {
     // label, integer, global, ret
-    if (symbol_name.find("Label") != std::string::npos) return symbol_name + "_" + std::to_string(inline_times);
+    if (symbol_name.find("Label") != std::string::npos) return symbol_name + "_" + std::to_string(inline_times_);
     if (is_integer(symbol_name) || symbol_table_.is_global_symbol(symbol_name)) return symbol_name;
     if (symbol_name == "%RET") return symbol_name;
 
     std::pair<bool, TableEntry *> callee_search_res = symbol_table_.SearchNearestSymbolNotFunc(callee_name,
                                                                                                symbol_name);
-    if (!callee_search_res.first) handle_error("can't find inline symbol in the callee symbol table while renaming");
+    if (!callee_search_res.first)
+        handle_error("can't find inline symbol '" + symbol_name + "' in the callee symbol table while renaming");
     TableEntry symbol_in_callee = TableEntry(callee_search_res.second);
     // search in the caller's symbol table,
     // if not in it, append
-    std::string re_name = symbol_name + "_" + std::to_string(inline_times);
+    std::string re_name = symbol_name + "_" + std::to_string(inline_times_);
     std::pair<bool, TableEntry *> caller_search_res = symbol_table_.SearchNearestSymbolNotFunc(caller_name, re_name);
     // not in caller, append to end
     if (!caller_search_res.first) {
         int addr = symbol_table_.GetFuncStackSize(caller_name);
-        addr += callee_search_res.second->size;
+//        addr += callee_search_res.second->size;
         symbol_table_.AddSymbol(caller_name, symbol_in_callee.data_type, SymbolType::VAR, re_name, re_name,
                                 symbol_in_callee.value, symbol_in_callee.level,
                                 symbol_in_callee.dims, symbol_in_callee.dim0_size, symbol_in_callee.dim1_size,
@@ -245,13 +297,13 @@ std::string get_op_string(IntermOp op) {
 }
 
 
-std::string interm_code_to_string(const IntermCode &code, bool tab) {
+std::string interm_code_to_string(const IntermCode &code, bool auto_indent) {
     std::string output;
-    std::string indent = (tab) ? "    " : "";
+    std::string indent = (auto_indent) ? "    " : "";
     if (code.op == IntermOp::LABEL || code.op == IntermOp::FUNC_BEGIN || code.op == IntermOp::FUNC_END)
         indent = "";
-
     output += indent;
+
     if (code.op == IntermOp::LABEL) {
         output += code.dst;
         output += ":";

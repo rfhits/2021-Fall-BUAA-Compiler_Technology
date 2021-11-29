@@ -6,6 +6,8 @@ CMakeLists.txt
 # local test files
 testfiles
 testfile.txt
+interm.txt
+interm_inline.txt
 output.txt
 error.txt
 mips.txt

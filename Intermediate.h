@@ -11,7 +11,7 @@
 enum class IntermOp {
     ADD, SUB, MUL, DIV, MOD,
 
-    AND, OR, NOT,
+    AND, OR, NOT, // deprecate, I thought it was used for condition, then i wrong
 
     EQ, NEQ, LSS, LEQ, GRE, GEQ,
 
@@ -78,7 +78,7 @@ struct IntermCode {
         op(op), dst(std::move(dst)), src1(std::move(src1)), src2(std::move(src2)) {}
 };
 
-std::string interm_code_to_string(const IntermCode& code, bool tab);
+std::string interm_code_to_string(const IntermCode& code, bool auto_indent);
 std::string get_op_string(IntermOp op);
 
 class Intermediate {
@@ -89,7 +89,7 @@ private:
     int while_label_cnt_ = 0;
     int cond_label_cnt_ = 0;
     int land_label_cnt = 0;
-    int inline_times = 0;
+    int inline_times_ = 0;
 
     SymbolTable &symbol_table_;
     std::ofstream &out_;
@@ -97,10 +97,12 @@ private:
     void handle_error(std::string msg);
 
 public:
-    std::vector<IntermCode> interm_codes_;
+    std::vector<IntermCode> codes_;
     std::vector<std::string> strcons;
 
-    void codes_to_string();
+    void OutputCodes();
+
+    void OutputCodes(std::ofstream& out);
 
     Intermediate(SymbolTable &symbol_table, std::ofstream &out);
 
@@ -127,7 +129,7 @@ public:
 
     void AddMidCode(const std::string &dst, IntermOp op, int src1, int src2);
 
-    std::string rename_inline_symbol(std::string caller_name, std::string callee_name, std::string symbol_name);
+    std::string rename_inline_symbol(const std::string& caller_name, const std::string& callee_name, std::string symbol_name);
 
     void InlineFunc();
 
