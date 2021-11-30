@@ -40,7 +40,7 @@ int main() {
     interm.InlineFunc();
     symbol_table.show_table();
     interm.OutputCodes(interm_inline_out);
-//    mips_generator.translate();
+    mips_generator.translate();
 
     interm_out.close();
     interm_inline_out.close();

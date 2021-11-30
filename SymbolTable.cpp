@@ -344,7 +344,7 @@ void SymbolTable::add_error(const std::string &msg) {
     std::cout << msg << std::endl << std::endl;
 }
 
-bool SymbolTable::is_global_symbol(std::string sym_name) {
+bool SymbolTable::is_global_symbol(const std::string& sym_name) {
     std::pair<bool, TableEntry *> search_res = SearchSymbolInLevel("", 0, sym_name);
     if (search_res.first) return true;
     else return false;

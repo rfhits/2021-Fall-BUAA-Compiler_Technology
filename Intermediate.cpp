@@ -151,12 +151,14 @@ void Intermediate::InlineFunc() {
             std::pair<bool, TableEntry *> search_res = symbol_table_.SearchFunc(code.dst);
             if (!search_res.first) handle_error("inline function not defined");
             std::string callee_name = search_res.second->name;
-            if (!search_res.second->is_recur_func && func_interm_codes[callee_name].size() <= 30) {
+            if (!search_res.second->is_recur_func && func_interm_codes[caller_name].size() <= 30) {
+                std::cout << "function " + callee_name + " is inlined to " + caller_name << std::endl;
                 inline_callee_name = code.dst;
                 inline_callee_stack.push_back(code.dst);
                 inline_times_ += 1;
             } else {
                 // pass
+                new_codes.emplace_back(code);
             }
         }
             // inline PUSH_VAL
@@ -209,6 +211,9 @@ void Intermediate::InlineFunc() {
                     re_src2 = rename_inline_symbol(caller_name, inline_callee_name, src2);
                     new_codes.emplace_back(op, re_dst, re_src1, re_src2);
                 }
+                else if (op == IntermOp::PREPARE_CALL || op == IntermOp::CALL) {
+                    new_codes.emplace_back(func_code);
+                }
                     // RET
                 else if (op == IntermOp::RET) {
                     if (dst.empty()) { // return void;
@@ -251,6 +256,8 @@ void Intermediate::InlineFunc() {
 std::string
 Intermediate::rename_inline_symbol(const std::string &caller_name, const std::string &callee_name,
                                    std::string symbol_name) {
+    if (symbol_name.empty()) return "";
+
     // label, integer, global, ret
     if (symbol_name.find("Label") != std::string::npos) return symbol_name + "_" + std::to_string(inline_times_);
     if (is_integer(symbol_name) || symbol_table_.is_global_symbol(symbol_name)) return symbol_name;

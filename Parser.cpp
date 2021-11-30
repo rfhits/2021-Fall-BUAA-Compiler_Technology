@@ -68,6 +68,7 @@ void Parser::add_error(int line_no, ErrorType error_type) {
 
 void Parser::add_error(ErrorType error_type) {
     int line_no = token_.get_line_no();
+    std::cerr << "error happended" << std::endl;
     if (DBG) {
         error_handler_.log_error_with_line_no(token_.get_line_no(), error_type_to_alpha.find(error_type)->second);
     } else {
@@ -392,7 +393,7 @@ std::pair<DataType, std::string> Parser::MulExp() {
             } else if (sign == 1) {
                 ret_var_name = std::to_string(cur_parsed_value / parsed_unary_exp_value);
             } else {
-                ret_var_name = std::to_string( cur_parsed_value % parsed_unary_exp_value);
+                ret_var_name = std::to_string(cur_parsed_value % parsed_unary_exp_value);
             }
         } else {
             cur_be_parsed_int = false;
@@ -649,10 +650,10 @@ std::pair<DataType, std::string> Parser::LVal() {
                                                        1, entry_ptr->dim1_size, 0, local_addr_);
                 local_addr_ += 4;
                 // add the dim0_idx to this arr
-                std::string offset =  intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
+                std::string offset = intermediate_.GenTmpVar(cur_func_name_, DataType::INT, cur_level_, local_addr_);
                 local_addr_ += 4;
 //                int row_size = entry_ptr->dim1_size*4;
-                intermediate_.AddMidCode(offset, IntermOp::MUL, dim0_idx, 4*entry_ptr->dim1_size);
+                intermediate_.AddMidCode(offset, IntermOp::MUL, dim0_idx, 4 * entry_ptr->dim1_size);
                 intermediate_.AddMidCode(ret_var_name, IntermOp::ADD, entry_ptr->alias, offset);
             }
         } else if (dims == 2) { // identifier [exp] [exp]
