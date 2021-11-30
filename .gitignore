@@ -6,12 +6,14 @@ CMakeLists.txt
 # local test files
 testfiles
 testfile.txt
+interm.txt
+interm_inline.txt
 output.txt
 error.txt
 mips.txt
-
-*.zip
+temp.txt
 
 # personal document
+*.zip
 设计文档.pdf
 设计文档.md

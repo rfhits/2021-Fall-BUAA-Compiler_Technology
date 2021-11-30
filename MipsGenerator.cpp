@@ -336,7 +336,7 @@ void MipsGenerator::translate() {
             // then save the context: ra, sp, s_res, t_res
             callee_name_stack_.push_back(cur_callee_name_);
             cur_callee_name_ = dst;
-            int func_stack_size = symbol_table_.get_func_stack_size(dst);
+            int func_stack_size = symbol_table_.GetFuncStackSize(dst);
             int frame_size = context_size + func_stack_size;
             frame_size_stack_.push_back(frame_size);
             add_code("sub $sp, $sp, " + std::to_string(frame_size));
@@ -391,7 +391,7 @@ void MipsGenerator::translate() {
             }
 
             // we don't save sp into the context, we use the frame_size to remember how much to return
-            int func_stack_size = symbol_table_.get_func_stack_size(dst);
+            int func_stack_size = symbol_table_.GetFuncStackSize(dst);
             add_code("sw $ra, " + std::to_string(ra_off + func_stack_size) + "($sp)");
             std::vector<int> saved_s_reg_no = {};
             std::vector<int> saved_t_reg_no = {};
@@ -428,7 +428,7 @@ void MipsGenerator::translate() {
             // do not care t_regs
         else if (op == IntermOp::FUNC_BEGIN) {
             if (!init_main) { // save a stack for main function
-                add_code("addi $sp, $sp, -" + std::to_string(symbol_table_.get_func_stack_size("main")));
+                add_code("addi $sp, $sp, -" + std::to_string(symbol_table_.GetFuncStackSize("main")));
                 add_code("j main");
                 init_main = true;
             }
