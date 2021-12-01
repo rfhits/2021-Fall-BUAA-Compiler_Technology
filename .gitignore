@@ -12,6 +12,8 @@ output.txt
 error.txt
 mips.txt
 temp.txt
+doc/mips1.asm
+*.asm
 
 # personal document
 *.zip

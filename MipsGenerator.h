@@ -29,14 +29,14 @@ private:
     std::vector<std::string> callee_name_stack_{};
     int param_no_ = 0;
     std::vector<std::string> s_regs_table_ = {"", "", "", "", "", "", "", ""};
-    std::vector<int> s_fifo_order_ = {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<int> s_order_ = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<std::string> saved_s_regs_table_{};
-    std::vector<int> saved_s_fifo_order{};
+    std::vector<int> saved_s_order_{};
 
     std::vector<std::string> t_regs_table_ = {"", "", "", "", "", "", "", "", "", ""};
-    std::vector<int> t_fifo_order_= {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<int> t_order_= {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<std::string> saved_t_regs_table_{};
-    std::vector<int> saved_t_fifo_order{};
+    std::vector<int> saved_t_order{};
 
     std::vector<std::string> write_back_symbols_ = {};
     std::vector<int> frame_size_stack_ = {};
@@ -68,27 +68,41 @@ public:
 
     void translate();
 
-    void release_reg_without_write_back(std::string reg_name);
+    void remove_from_reg(std::string reg_name);
 
     std::pair<bool, std::string> search_in_st_regs(const std::string& symbol);
 
-    void copy_to_memo(const std::string& table_name, const std::string& symbol);
+    void save_to_memo(const std::string& table_name, const std::string& symbol);
 
-    void move_to_memo(const std::string& table_name, const std::string& symbol);
+    void remove_from_reg_save_to_memo(const std::string& table_name, const std::string& symbol);
 
-    std::string load_to_t_reg(std::string symbol);
+    std::string get_empty_s_reg();
 
-    std::string load_to_s_reg(const std::string& symbol);
+    void move_reg_no_to_order_end(std::string table_name, int reg_no);
 
-    std::string get_a_reg_for(std::string symbol);
+    std::string assign_t_reg(std::string symbol);
 
-    void load_to_reg(std::string symbol, std::string reg_name);
+    std::string assign_s_reg_require_load_from_memo(const std::string& symbol);
+
+    std::string assign_s_reg_without_load_from_memo(const std::string& symbol);
+
+    std::string get_reg_require_load_from_memo(std::string symbol);
+
+    std::string get_reg_without_load_from_memo(std::string symbol);
+
+    void save_symbol_to_the_reg(std::string symbol, const std::string& reg_name);
 
     std::pair<int, std::string> get_memo_addr(const std::string& symbol);
 
-    void move_s_regs_to_memo();
+    void remove_s_regs_save_to_memo();
 
-    void move_t_regs_to_memo();
+    void remove_t_regs_save_to_memo();
+
+    std::string assign_reg_require_load_from_memo(const std::string& symbol);
+
+    std::string assign_reg_without_load_from_memo(std::string symbol);
+
+
 
     void add_code(const std::string &code);
 
