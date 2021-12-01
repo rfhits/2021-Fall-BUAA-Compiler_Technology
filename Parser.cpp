@@ -1284,7 +1284,7 @@ BlockItemType Parser::Stmt() {
             std::string while_end_label = *(while_labels.end() - 1);
             intermediate_.AddMidCode(while_end_label, IntermOp::JUMP, "", "");
         } else {
-            std::string while_begin_label = *(while_labels.end() - 2);
+            std::string while_begin_label = *(while_labels.end() - 3);
             intermediate_.AddMidCode(while_begin_label, IntermOp::JUMP, "", "");
         }
         if (*it) {
@@ -1721,27 +1721,41 @@ std::pair<DataType, std::string> Parser::RelExp() {
 
 // WhileStmt -> 'while' '(' Cond ')' Stmt
 void Parser::WhileStmt() {
+    std::string label_while_head = intermediate_.GenWhileHeadLabel();
     std::string label_while_begin = intermediate_.GenWhileBeginLabel();
     std::string label_while_end = intermediate_.GenWhileEndLabel();
+    while_labels.push_back(label_while_head);
     while_labels.push_back(label_while_begin);
     while_labels.push_back(label_while_end);
-    intermediate_.AddMidCode(label_while_begin, IntermOp::LABEL, "", "");
+    intermediate_.AddMidCode(label_while_head, IntermOp::LABEL, "", "");
 
     next_sym(); // eat '('
     next_sym();
+    int cond_begin = pos_-1;
     std::pair<DataType, std::string> cond_ret = Cond();
+    int cond_end = pos_;
+    std::vector<Token> vec_cond(read_tokens_.begin() + cond_begin, read_tokens_.begin() + cond_end);
+
     if (cond_ret.first != DataType::INT) handle_error("datatype of cond in while need to be int");
     intermediate_.AddMidCode(label_while_end, IntermOp::BEQ, cond_ret.second, 0);
-    next_sym();
+
+    intermediate_.AddMidCode(label_while_begin, IntermOp::LABEL, "", "");
+    next_sym(); // eat ')'
     if (type_code_ != TypeCode::RPARENT) {
         retract();
         add_error(ErrorType::EXPECTED_PARENT);
     }
     next_sym();
     Stmt();
+    read_tokens_.insert(read_tokens_.begin() + pos_, vec_cond.begin(), vec_cond.end());
+    next_sym();
+    cond_ret = Cond();
+    intermediate_.AddMidCode(label_while_begin, IntermOp::BNE, cond_ret.second, 0);
+
     while_labels.pop_back();
     while_labels.pop_back();
-    intermediate_.AddMidCode(label_while_begin, IntermOp::JUMP, "", "");
+    while_labels.pop_back();
+//    intermediate_.AddMidCode(label_while_begin, IntermOp::JUMP, "", "");
     intermediate_.AddMidCode(label_while_end, IntermOp::LABEL, "", "");
 }
 

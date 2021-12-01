@@ -113,6 +113,8 @@ public:
 
     std::string GenLabel();
 
+    std::string GenWhileHeadLabel();
+
     std::string GenWhileBeginLabel();
 
     std::string GenWhileEndLabel();

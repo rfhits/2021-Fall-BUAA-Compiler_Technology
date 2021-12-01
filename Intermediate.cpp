@@ -83,6 +83,11 @@ std::string Intermediate::GenLabel() {
     return label;
 }
 
+std::string Intermediate::GenWhileHeadLabel() {
+    std::string label = "While_Head_Label_" + std::to_string(while_label_cnt_);
+    return label;
+}
+
 std::string Intermediate::GenWhileBeginLabel() {
     std::string label = "While_Begin_Label_" + std::to_string(while_label_cnt_);
     return label;
