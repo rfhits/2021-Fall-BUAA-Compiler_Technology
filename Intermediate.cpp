@@ -116,7 +116,7 @@ void Intermediate::OutputCodes() {
 }
 
 
-void Intermediate::OutputCodes(std::ofstream& out) {
+void Intermediate::OutputCodes(std::ofstream &out) {
     for (auto &code: codes_) {
         out << interm_code_to_string(code, true) << std::endl;
     }
@@ -215,8 +215,7 @@ void Intermediate::InlineFunc() {
                     re_src1 = rename_inline_symbol(caller_name, inline_callee_name, src1);
                     re_src2 = rename_inline_symbol(caller_name, inline_callee_name, src2);
                     new_codes.emplace_back(op, re_dst, re_src1, re_src2);
-                }
-                else if (op == IntermOp::PREPARE_CALL || op == IntermOp::CALL) {
+                } else if (op == IntermOp::PREPARE_CALL || op == IntermOp::CALL) {
                     new_codes.emplace_back(func_code);
                 }
                     // RET
@@ -294,6 +293,28 @@ Intermediate::rename_inline_symbol(const std::string &caller_name, const std::st
 //
 void Intermediate::handle_error(std::string msg) {
     std::cout << msg << std::endl;
+}
+
+void Intermediate::peephole_optimize() {
+    if (codes_.size() == 1) return;
+    auto it = codes_.begin() + 1;
+    while (it != codes_.end()) {
+        // DIV temp 5 b <-- pre_it
+        // ADD a temp 0 <-- it
+        auto pre_it = it - 1;
+        bool is_assign = ((it->op) == IntermOp::ADD) & (it->src2 == "0");
+        bool dst_eq_src = (pre_it->dst[0] == '#') & (it->src1 == pre_it->dst);
+        if (is_assign && dst_eq_src) {
+            pre_it->dst = it->dst;
+            it = codes_.erase(it);
+            continue;
+        }
+        it++;
+    }
+}
+
+void Intermediate::Optimize() {
+    if (enable_peephole_) peephole_optimize();
 }
 
 

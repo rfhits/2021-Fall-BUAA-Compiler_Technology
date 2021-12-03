@@ -32,12 +32,12 @@ enum class IntermOp {
 
 
 const std::unordered_map<IntermOp, std::string> op_to_str = {
-        {IntermOp::SUB, "SUB"},
-        {IntermOp::ADD,"ADD"},
-        {IntermOp::MUL,"MUL"},
-        {IntermOp::DIV,"DIV"},
-        {IntermOp::MOD,"MOD"},
-        {IntermOp::AND,"AND"},
+        {IntermOp::SUB,          "SUB"},
+        {IntermOp::ADD,          "ADD"},
+        {IntermOp::MUL,          "MUL"},
+        {IntermOp::DIV,          "DIV"},
+        {IntermOp::MOD,          "MOD"},
+        {IntermOp::AND,          "AND"},
         {IntermOp::OR,           "OR"},
         {IntermOp::NOT,          "NOT"},
         {IntermOp::EQ,           "EQ"},
@@ -59,13 +59,15 @@ const std::unordered_map<IntermOp, std::string> op_to_str = {
         {IntermOp::FUNC_END,     "FUNC_END"},
         {IntermOp::PREPARE_CALL, "PREPARE_CALL"},
         {IntermOp::PUSH_VAL,     "PUSH_VAL"},
-        {IntermOp::PUSH_ARR,"PUSH_ARR"},
-        {IntermOp::CALL,"CALL"},
-        {IntermOp::RET,"RET"},
+        {IntermOp::PUSH_ARR,     "PUSH_ARR"},
+        {IntermOp::CALL,         "CALL"},
+        {IntermOp::RET,          "RET"},
 };
 
 bool is_arith(IntermOp op);
+
 bool is_bitwise(IntermOp op);
+
 bool is_cmp(IntermOp op);
 
 struct IntermCode {
@@ -73,12 +75,15 @@ struct IntermCode {
     IntermOp op;
     std::string src1;
     std::string src2;
-    IntermCode(){};
-    IntermCode(IntermOp op, std::string dst, std::string src1, std::string src2):
-        op(op), dst(std::move(dst)), src1(std::move(src1)), src2(std::move(src2)) {}
+
+    IntermCode() {};
+
+    IntermCode(IntermOp op, std::string dst, std::string src1, std::string src2) :
+            op(op), dst(std::move(dst)), src1(std::move(src1)), src2(std::move(src2)) {}
 };
 
-std::string interm_code_to_string(const IntermCode& code, bool auto_indent);
+std::string interm_code_to_string(const IntermCode &code, bool auto_indent);
+
 std::string get_op_string(IntermOp op);
 
 class Intermediate {
@@ -94,6 +99,15 @@ private:
     SymbolTable &symbol_table_;
     std::ofstream &out_;
 
+    bool enable_inline_ = false;
+    bool enable_peephole_ = true;
+    bool enable_common_expr_ = true;
+    bool enable_const_prop_ = true;
+    bool enable_copy_prop_ = true;
+    bool enable_DCE_ = true; // dead code elimination
+
+    void devide_basic_block();
+
     void handle_error(std::string msg);
 
 public:
@@ -102,7 +116,7 @@ public:
 
     void OutputCodes();
 
-    void OutputCodes(std::ofstream& out);
+    void OutputCodes(std::ofstream &out);
 
     Intermediate(SymbolTable &symbol_table, std::ofstream &out);
 
@@ -131,9 +145,14 @@ public:
 
     void AddMidCode(const std::string &dst, IntermOp op, int src1, int src2);
 
-    std::string rename_inline_symbol(const std::string& caller_name, const std::string& callee_name, std::string symbol_name);
+    std::string
+    rename_inline_symbol(const std::string &caller_name, const std::string &callee_name, std::string symbol_name);
+
+    void Optimize();
 
     void InlineFunc();
+
+    void peephole_optimize();
 
 };
 

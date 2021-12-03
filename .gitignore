@@ -7,6 +7,7 @@ CMakeLists.txt
 testfiles
 testfile.txt
 interm.txt
+interm_opt.txt
 interm_inline.txt
 output.txt
 error.txt

@@ -8,7 +8,7 @@
 int main() {
     std::string testfile_path = "testfile.txt";
     std::string interm_output_path = "interm.txt";
-    std::string interm_inline_output_path = "interm_inline.txt";
+    std::string interm_opt_output_path = "interm_opt.txt";
     std::string mips_output_path = "mips.txt";
     std::string error_out_path = "error.txt";
 
@@ -22,7 +22,7 @@ int main() {
 
     // init outstrem
     std::ofstream interm_out(interm_output_path);
-    std::ofstream interm_inline_out(interm_inline_output_path);
+    std::ofstream interm_opt_out(interm_opt_output_path);
     std::ofstream mips_out(mips_output_path);
     std::ofstream error_out(error_out_path);
     ErrorHandler error_handler(error_out);
@@ -37,14 +37,14 @@ int main() {
     symbol_table.show_table();
     interm.OutputCodes(interm_out);
 
-//    interm.InlineFunc();
-//    interm.OutputCodes(interm_inline_out);
+    interm.Optimize();
+    interm.OutputCodes(interm_opt_out);
     symbol_table.show_table();
 
     mips_generator.translate();
 
     interm_out.close();
-    interm_inline_out.close();
+    interm_opt_out.close();
     error_out.close();
     mips_out.close();
     return 0;
