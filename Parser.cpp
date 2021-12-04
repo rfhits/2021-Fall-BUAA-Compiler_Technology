@@ -1110,6 +1110,10 @@ void Parser::FuncDef() {
         cur_level_ -= 1;
         if (func_type == DataType::VOID) {
             // has return statement or not does not matter
+            // add a return statement for block
+            if (item_types.back() != BlockItemType::RETURN_STMT) {
+                intermediate_.AddMidCode("", IntermOp::RET, "", "");
+            }
         } else {
             if (!has_ret_stmt_) {
                 add_error(ErrorType::MISSING_RET);

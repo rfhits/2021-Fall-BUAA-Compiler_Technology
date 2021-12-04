@@ -4,6 +4,8 @@
 
 #include "Intermediate.h"
 
+#include <utility>
+
 
 bool is_arith(IntermOp op) {
     if (op == IntermOp::ADD || op == IntermOp::SUB || op == IntermOp::MUL || op == IntermOp::DIV ||
@@ -25,6 +27,14 @@ bool is_bitwise(IntermOp op) {
 bool is_cmp(IntermOp op) {
     if (op == IntermOp::EQ || op == IntermOp::NEQ || op == IntermOp::LSS || op == IntermOp::LEQ ||
         op == IntermOp::GRE || op == IntermOp::GEQ) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool is_modify_op(IntermOp op) {
+    if (is_cmp(op) && is_arith(op) || is_bitwise(op) || op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
         return true;
     } else {
         return false;
@@ -119,6 +129,24 @@ void Intermediate::OutputCodes() {
 void Intermediate::OutputCodes(std::ofstream &out) {
     for (auto &code: codes_) {
         out << interm_code_to_string(code, true) << std::endl;
+    }
+}
+
+
+void Intermediate::OutputBasicBlocks(std::ofstream &out) {
+    for (auto &basic_block: basic_blocks_) {
+        basic_block.OutputBasicBlock(out);
+    }
+}
+
+void Intermediate::OutputFuncBlocks(std::ofstream &out) {
+    basic_blocks_[0].OutputBasicBlock(out);
+    for (int i = 0; i < func_blocks_.size(); i++) {
+        out << "---- Func " << func_blocks_[i].func_name_ << " Begin ----" << std::endl;
+        for (auto id: func_blocks_[i].block_ids_) {
+            basic_blocks_[id].OutputBasicBlock(out);
+        }
+        out << "---- " << "Func End" << " ----" << std::endl << std::endl;
     }
 }
 
@@ -295,6 +323,13 @@ void Intermediate::handle_error(std::string msg) {
     std::cout << msg << std::endl;
 }
 
+void Intermediate::Optimize() {
+    if (enable_peephole_) peephole_optimize();
+    divide_basic_block();
+    construct_flow_rel();
+    add_modified_symbols();
+}
+
 void Intermediate::peephole_optimize() {
     if (codes_.size() == 1) return;
     auto it = codes_.begin() + 1;
@@ -311,12 +346,224 @@ void Intermediate::peephole_optimize() {
         }
         it++;
     }
+
+    // self assign
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        if ((it->op == IntermOp::ADD || it->op == IntermOp::SUB) && it->dst == it->src1 && it->src2 == "0") {
+            it = codes_.erase(it);
+            continue;
+        }
+        if (it->op == IntermOp::MUL || it->op == IntermOp::DIV && it->dst == it->src1 && it->src2 == "1") {
+            it = codes_.erase(it);
+            continue;
+        }
+        it++;
+    }
+
+    // JUMP, JUMP
+    it = codes_.begin() + 1;
+    while (it != codes_.end()) {
+        auto pre_it = it - 1;
+        if (it->op == IntermOp::JUMP && pre_it->op == IntermOp::JUMP) {
+            it = codes_.erase(it);
+            continue;
+        }
+        it++;
+    }
+
+    // todo: useless label removal
 }
 
-void Intermediate::Optimize() {
-    if (enable_peephole_) peephole_optimize();
+void Intermediate::divide_basic_block() {
+    new_basic_block();
+    for (int i = 0; i < codes_.size(); i++) {
+        if (codes_[i].op == IntermOp::FUNC_BEGIN) {
+            new_basic_block();
+            basic_blocks_[cur_block_id_].AddLabelCode(codes_[i]);
+        }
+            // label
+        else if (codes_[i].op == IntermOp::LABEL) {
+            if (basic_blocks_[cur_block_id_].HasNoCodes()) {
+                basic_blocks_[cur_block_id_].AddLabelCode(codes_[i]);
+            } else {
+                new_basic_block();
+                basic_blocks_[cur_block_id_].AddLabelCode(codes_[i]);
+            }
+        }
+            // JUMP, BNE, BEQ
+        else if (codes_[i].op == IntermOp::JUMP || codes_[i].op == IntermOp::BNE || codes_[i].op == IntermOp::BEQ) {
+            basic_blocks_[cur_block_id_].AddJBCode(codes_[i]);
+            new_basic_block();
+        }
+            // RET
+        else if (codes_[i].op == IntermOp::RET) {
+            if (basic_blocks_.back().HasNoCodes()) {
+
+            } else {
+                new_basic_block();
+            }
+            basic_blocks_.back().AddCode(codes_[i]);
+        } else if (codes_[i].op == IntermOp::FUNC_END) {
+            basic_blocks_[cur_block_id_].AddJBCode(codes_[i]);
+        } else {
+            basic_blocks_.back().AddCode(codes_[i]);
+        }
+    }
+
+    int i = 0;
+    while (i < basic_blocks_.size()) {
+        if (!basic_blocks_[i].label_codes_.empty() &&
+            basic_blocks_[i].label_codes_[0].op == IntermOp::FUNC_BEGIN) {
+            std::string func_name = basic_blocks_[i].label_codes_[0].dst;
+            new_func_block(func_name);
+            func_blocks_.back().AddBlock(i);
+            i += 1;
+            while (!(!basic_blocks_[i].jb_codes_.empty() &&
+                     basic_blocks_[i].jb_codes_.back().op == IntermOp::FUNC_END)) {
+                func_blocks_.back().AddBlock(i);
+                i += 1;
+            }
+            func_blocks_.back().AddBlock(i);
+        }
+        i += 1;
+    }
 }
 
+void Intermediate::construct_flow_rel() {
+    for (const auto &func_block: func_blocks_) {
+        for (int id: func_block.block_ids_) {
+            // now we have a basic block
+
+            // ret block don't have succ
+            if (basic_blocks_[id].IsRetBlock()) {
+                continue;
+            }
+
+            // the jb codes is empty
+            if (basic_blocks_[id].jb_codes_.empty()) {
+                basic_blocks_[id].AddSucc(id + 1);
+                basic_blocks_[id + 1].AddPred(id);
+            }
+                // the jb codes length must be one
+            else {
+                if (basic_blocks_[id].jb_codes_.size() != 1) {
+                    std::string msg = "jb_code of block #" + std::to_string(id) + "is not 1";
+                    handle_error(msg);
+                }
+
+                    // JUMP, BNE, BEQ
+                else {
+                    std::string label = basic_blocks_[id].jb_codes_[0].dst;
+                    for (int j: func_block.block_ids_) {
+                        if (basic_blocks_[j].ContainsLabel(label)) {
+                            basic_blocks_[id].AddSucc(j);
+                            basic_blocks_[j].AddPred(id);
+                        }
+                    }
+                    if (basic_blocks_[id].jb_codes_[0].op == IntermOp::BNE ||
+                        basic_blocks_[id].jb_codes_[0].op == IntermOp::BEQ) {
+                        basic_blocks_[id].AddSucc(id + 1);
+                        basic_blocks_[id + 1].AddPred(id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+void Intermediate::new_basic_block() {
+    cur_block_id_ += 1;
+    BasicBlock basic_block = BasicBlock(cur_block_id_);
+    this->basic_blocks_.push_back(basic_block);
+}
+
+void Intermediate::new_func_block(std::string func_name) {
+    FuncBlock func_block = FuncBlock(std::move(func_name));
+    this->func_blocks_.push_back(func_block);
+}
+
+void Intermediate::add_modified_symbols() {
+    for (auto &func_block: func_blocks_) {
+        for (int block_id: func_block.block_ids_) {
+            BasicBlock &basic_block = basic_blocks_[block_id];
+            for (auto &code: basic_block.codes_) {
+                if (is_arith(code.op) || is_bitwise(code.op) || is_cmp(code.op) || (code.op == IntermOp::GETINT) ||
+                    (code.op == IntermOp::ARR_LOAD)) {
+                    func_block.AddModifiedSymbol(code.dst);
+                }
+            }
+        }
+    }
+
+}
+
+std::pair<bool, int> search_in_nodes(std::vector<DAGNode> &nodes, IntermCode &code) {
+    IntermOp op = code.op;
+    std::string dst = code.dst;
+    std::string src1 = code.src1;
+    std::string src2 = code.src2;
+
+    for (auto &node: nodes) {
+        if (node.op_ == op) {
+            if (op == IntermOp::ADD || op == IntermOp::MUL) {
+                if (nodes[node.sons_[0]].ContainsSymbol(src1) && nodes[node.sons_[1]].ContainsSymbol(src2) ||
+                    nodes[node.sons_[0]].ContainsSymbol(src2) && nodes[node.sons_[1]].ContainsSymbol(src1)) {
+                    return std::make_pair(true, node.id_);
+                } else {
+                    continue;
+                }
+            } else {
+                if (nodes[node.sons_[0]].ContainsSymbol(src1) && nodes[node.sons_[1]].ContainsSymbol(src2)) {
+                    return std::make_pair(true, node.id_);
+                } else {
+                    continue;
+                }
+            }
+        } else {
+            continue;
+        }
+    }
+}
+
+void Intermediate::common_expr() {
+    for (auto &basic_block: basic_blocks_) {
+        int node_id = 0;
+        std::vector<DAGNode> nodes;
+        std::vector<IntermCode> new_codes;
+        std::unordered_map<std::string, int> symbol_to_node;
+
+        for (auto &code: basic_block.codes_) {
+            IntermOp op = code.op;
+            std::string dst = code.dst;
+            std::string src1 = code.src1;
+            std::string src2 = code.src2;
+            int dst_node_id = -1;
+            auto it_dst = symbol_to_node.find(src1);
+            if (it_dst != symbol_to_node.end()) {
+                dst_node_id = it_dst->second; // mark it, may change
+            }
+
+            auto search_res = search_in_nodes(nodes, code);
+            // there is a pattern for op dst src1 src2, so we can use common expr
+            if (search_res.first) {
+                std::string copy_name = nodes[search_res.second].GetSymbolName();
+                new_codes.emplace_back(IntermOp::ADD, dst, copy_name, "0");
+                if (dst_node_id != -1) {
+                    nodes[dst_node_id].RemoveSymbol(dst);
+                }
+                symbol_to_node[dst] = search_res.second;
+                nodes[search_res.second].AddSymbol(dst);
+            }
+            // get a node id for src1, if not exits, generate
+            // get a node id for src2, if not exits, generate
+            // gen a new node for the dst, then remove from old
+
+        }
+    }
+
+}
 
 std::string get_op_string(IntermOp op) {
     std::string str_op;

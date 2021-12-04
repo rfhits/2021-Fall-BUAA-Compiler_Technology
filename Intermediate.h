@@ -6,6 +6,8 @@
 #define INC_2021_FALL_BUAA_COMPILER_TECHNOLOGY_INTERMEDIATE_H
 
 #include <string>
+#include <set>
+#include <utility>
 #include "SymbolTable.h"
 
 enum class IntermOp {
@@ -86,6 +88,140 @@ std::string interm_code_to_string(const IntermCode &code, bool auto_indent);
 
 std::string get_op_string(IntermOp op);
 
+class DAGNode {
+public:
+    int id_;
+    std::vector<std::string> symbols_; // the node represent these symbols
+    IntermOp op_;
+    std::vector<int> sons_;
+
+    std::string GetSymbolName() {
+        return symbols_[0];
+    }
+
+    bool ContainsSymbol(const std::string &symbol_name) {
+        if (std::find(symbols_.begin(), symbols_.end(), symbol_name) != symbols_.end()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    void AddSymbol(const std::string &symbol_name) {
+        this->symbols_.push_back(symbol_name);
+    }
+
+    void RemoveSymbol(std::string symbol) {
+        auto it = std::find(symbols_.begin(), symbols_.end(), symbol);
+        if (it == symbols_.end()) std::cerr << "remove a not find symbol" << std::endl;
+        symbols_.erase(it);
+    }
+};
+
+class BasicBlock {
+public:
+    int id_;
+    std::set<int> pred_blocks_;
+    std::set<int> succ_blocks_;
+    std::set<std::string> def_;
+    std::set<std::string> use_;
+
+    std::vector<IntermCode> label_codes_;
+    std::vector<IntermCode> jb_codes_; // jump and branch codes
+    std::vector<IntermCode> codes_;
+
+    explicit BasicBlock(int id) {
+        this->id_ = id;
+    }
+
+    bool IsRetBlock() {
+        if (!this->codes_.empty() && this->codes_.back().op == IntermOp::RET) return true;
+        else return false;
+    }
+
+    bool HasNoCodes() {
+        return this->codes_.empty();
+    }
+
+    void AddCode(const IntermCode &code) {
+        this->codes_.push_back(code);
+    }
+
+    void AddLabelCode(const IntermCode &code) {
+        this->label_codes_.push_back(code);
+    }
+
+    void AddJBCode(const IntermCode &code) {
+        this->jb_codes_.push_back(code);
+    }
+
+    void AddPred(int id) {
+        this->pred_blocks_.insert(id);
+    }
+
+    void AddSucc(int id) {
+        this->succ_blocks_.insert(id);
+    }
+
+    bool ContainsLabel(const std::string &label) {
+        bool flag = false;
+        for (auto &code: label_codes_) {
+            if (code.dst == label) {
+                flag = true;
+                break;
+            }
+        }
+        return flag;
+    }
+
+    void OutputBasicBlock(std::ofstream &out) {
+        out << "---- block id: " << this->id_ << " ----" << std::endl;
+        out << "pred: ";
+        for (int id: pred_blocks_) {
+            out << std::to_string(id) << " ";
+        }
+        out << std::endl;
+        out << "--------" << std::endl;
+        for (auto &code: label_codes_) {
+            out << interm_code_to_string(code, true) << std::endl;
+        }
+        for (auto &code: codes_) {
+            out << interm_code_to_string(code, true) << std::endl;
+        }
+        for (auto &code: jb_codes_) {
+            out << interm_code_to_string(code, true) << std::endl;
+        }
+        out << "--------" << std::endl;
+        out << "succ: ";
+        for (int id: succ_blocks_) {
+            out << std::to_string(id) << " ";
+        }
+        out << std::endl;
+        out << "--------" << std::endl << std::endl;
+    }
+};
+
+class FuncBlock {
+private:
+    std::set<std::string> modified_symbols_;
+public:
+    std::vector<int> block_ids_; // block id
+    std::string func_name_;
+
+    explicit FuncBlock(std::string func_name) {
+        this->func_name_ = std::move(func_name);
+    }
+
+    void AddBlock(int block_id) {
+        this->block_ids_.push_back(block_id);
+    }
+
+    void AddModifiedSymbol(const std::string &symbol) {
+        this->modified_symbols_.insert(symbol);
+    }
+
+};
+
 class Intermediate {
 private:
     int tmp_cnt_ = 0; // how many tmp vars have been generated
@@ -99,6 +235,9 @@ private:
     SymbolTable &symbol_table_;
     std::ofstream &out_;
 
+    int cur_block_id_ = -1;
+//    int cur_func_block_id = -1;
+
     bool enable_inline_ = false;
     bool enable_peephole_ = true;
     bool enable_common_expr_ = true;
@@ -106,17 +245,35 @@ private:
     bool enable_copy_prop_ = true;
     bool enable_DCE_ = true; // dead code elimination
 
-    void devide_basic_block();
+    void peephole_optimize();
+
+    void new_basic_block();
+
+    void new_func_block(std::string func_name);
+
+    void divide_basic_block();
+
+    void construct_flow_rel();
+
+    void add_modified_symbols();
+
+    void common_expr();
 
     void handle_error(std::string msg);
 
 public:
     std::vector<IntermCode> codes_;
     std::vector<std::string> strcons;
+    std::vector<BasicBlock> basic_blocks_;
+    std::vector<FuncBlock> func_blocks_;
 
     void OutputCodes();
 
     void OutputCodes(std::ofstream &out);
+
+    void OutputBasicBlocks(std::ofstream &out);
+
+    void OutputFuncBlocks(std::ofstream &out);
 
     Intermediate(SymbolTable &symbol_table, std::ofstream &out);
 
@@ -152,7 +309,6 @@ public:
 
     void InlineFunc();
 
-    void peephole_optimize();
 
 };
 

@@ -9,6 +9,7 @@ int main() {
     std::string testfile_path = "testfile.txt";
     std::string interm_output_path = "interm.txt";
     std::string interm_opt_output_path = "interm_opt.txt";
+    std::string basic_blocks_output_path = "basic_blocks.txt";
     std::string mips_output_path = "mips.txt";
     std::string error_out_path = "error.txt";
 
@@ -20,7 +21,7 @@ int main() {
     ss << in_stream.rdbuf();
     in_stream.close();
 
-    // init outstrem
+    // init output stream
     std::ofstream interm_out(interm_output_path);
     std::ofstream interm_opt_out(interm_opt_output_path);
     std::ofstream mips_out(mips_output_path);
@@ -38,7 +39,9 @@ int main() {
     interm.OutputCodes(interm_out);
 
     interm.Optimize();
-    interm.OutputCodes(interm_opt_out);
+//    interm.OutputCodes(interm_opt_out);
+//    interm.OutputBasicBlocks(interm_opt_out);
+    interm.OutputFuncBlocks(interm_opt_out);
     symbol_table.show_table();
 
     mips_generator.translate();
