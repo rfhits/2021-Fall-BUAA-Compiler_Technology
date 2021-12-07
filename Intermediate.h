@@ -20,7 +20,7 @@ enum class IntermOp {
     GETINT, PRINT,
 
     INIT_ARR_PTR,
-    ARR_SAVE, // save to array
+    ARR_SAVE, // save to array, arr_save arr_name index value
     ARR_LOAD, // load from array
 
     LABEL,
@@ -72,13 +72,32 @@ bool is_bitwise(IntermOp op);
 
 bool is_cmp(IntermOp op);
 
+// dst is read, not changed
+// especially for the arr_save op, it is read from src2
+bool is_read_op(IntermOp op) {
+    if (op == IntermOp::ARR_SAVE || op == IntermOp::PRINT) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool is_write_op(IntermOp op) {
+    if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::GETINT ||
+        op == IntermOp::ARR_LOAD) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 struct IntermCode {
     std::string dst;
     IntermOp op;
     std::string src1;
     std::string src2;
 
-    IntermCode() {};
+    IntermCode() = default;
 
     IntermCode(IntermOp op, std::string dst, std::string src1, std::string src2) :
             op(op), dst(std::move(dst)), src1(std::move(src1)), src2(std::move(src2)) {}
@@ -88,12 +107,29 @@ std::string interm_code_to_string(const IntermCode &code, bool auto_indent);
 
 std::string get_op_string(IntermOp op);
 
+bool is_assign_code(IntermCode code) {
+    bool src_contains_0 = code.src1 == "0" || code.src2 == "0";
+
+    if (code.op == IntermOp::ADD && src_contains_0) {
+        return true;
+    } else if (code.src2 == "0" && code.op == IntermOp::SUB) {
+        return true;
+    } else if (true) {
+        return false;
+    }
+}
+
 class DAGNode {
 public:
     int id_;
     std::vector<std::string> symbols_; // the node represent these symbols
     IntermOp op_;
-    std::vector<int> sons_;
+    int left_son_;
+    int right_son_;
+
+    DAGNode(int id) {
+        this->id_ = id;
+    }
 
     std::string GetSymbolName() {
         return symbols_[0];
@@ -220,6 +256,117 @@ public:
         this->modified_symbols_.insert(symbol);
     }
 
+};
+
+class BasicBlockDAGManager {
+public:
+    std::vector<DAGNode> nodes;
+    std::unordered_map<std::string, int> symbol_to_node_id;
+
+
+    // @brief: given a symbol name, search it in the table
+    //         if found, return its node id
+    //         else: new a node, add to table
+    int get_symbol_node_require_new(std::string symbol) {
+        auto it = symbol_to_node_id.find(symbol);
+        if (it != symbol_to_node_id.end()) {
+            return it->second;
+        } else {
+            int id = nodes.size();
+            DAGNode node = DAGNode(id);
+            node.AddSymbol(symbol);
+            nodes.push_back(node);
+            symbol_to_node_id[symbol] = id;
+            return id;
+        }
+    }
+
+    std::pair<bool, int> find_pattern(IntermOp op, std::string src1, std::string src2) {
+        for (auto &node: nodes) {
+            if (node.op_ != op) continue;
+            int left_id = node.left_son_;
+            int right_id = node.right_son_;
+            if (op == IntermOp::ADD || op == IntermOp::MUL) {
+                if ((nodes[left_id].ContainsSymbol(src1) && nodes[right_id].ContainsSymbol(src2)) ||
+                    (nodes[left_id].ContainsSymbol(src2) && nodes[right_id].ContainsSymbol(src2))) {
+                    return std::make_pair(true, node.id_);
+                }
+            } else {
+                if (nodes[left_id].ContainsSymbol(src1) && nodes[right_id].ContainsSymbol(src2)) {
+                    return std::make_pair(true, node.id_);
+                } else {
+                    continue;
+                }
+            }
+        }
+        return std::make_pair(false, -1);
+    }
+
+
+    // given a code, return an eval code
+    IntermCode GetEvalCode(const IntermCode &code) {
+        std::string dst = code.dst;
+        IntermOp op = code.op;
+        std::string src1 = code.src1;
+        std::string src2 = code.src2;
+        if (is_read_op(op)) {
+            // try to find a symbol in the dag,
+            // if can not be found, new a node, add to table
+            if (op == IntermOp::ARR_SAVE) {
+                int id = get_symbol_node_require_new(src2);
+                std::string re_src2 = nodes[id].GetSymbolName();
+                return {op, dst, src1, re_src2};
+            } else {
+                int id = get_symbol_node_require_new(dst);
+                std::string re_dst = nodes[id].GetSymbolName();
+                return {op, re_dst, src1, src2};
+            }
+        }
+            // is write op
+        else {
+            // assign
+            if (op == IntermOp::ADD && src2 == "0") {
+                int id = get_symbol_node_require_new(src1);
+                std::string re_src1 = nodes[id].GetSymbolName();
+                return {op, dst, re_src1, src2};
+            }
+
+            std::pair<bool, int> search_res = find_pattern(op, src1, src2);
+            if (search_res.first) {
+                int pattern_id = search_res.second;
+                // 1. find dst origin node id, if not exist ...
+                // 2. move this symbol from the origin node, move to the pattern, change the symbol table
+                // if the origin id not exists, directly move it to the pattern
+                auto it = symbol_to_node_id.find(dst);
+                if (it != symbol_to_node_id.end()) {
+                    int origin_id = it->second;
+                    nodes[origin_id].RemoveSymbol(dst);
+                }
+                symbol_to_node_id[dst] = pattern_id; // new or remove, both work
+                nodes[pattern_id].AddSymbol(dst);
+                return {IntermOp::ADD, dst, nodes[pattern_id].GetSymbolName(), "0"};
+            } else {
+                // get the src1 and src2 node,
+                // find dst origin node,
+                // new a node then put it into
+                int src1_id = get_symbol_node_require_new(src1);
+                int src2_id = get_symbol_node_require_new(src2);
+                std::string re_src1 = nodes[src1_id].GetSymbolName();
+                std::string re_src2 = nodes[src2_id].GetSymbolName();
+                auto it = symbol_to_node_id.find(dst);
+                if (it != symbol_to_node_id.end()) {
+                    nodes[it->second].RemoveSymbol(dst);
+                    symbol_to_node_id.erase(it);
+                }
+                // now we are sure dst is not in the table and nodes
+                int dst_id = get_symbol_node_require_new(dst);
+                nodes[dst_id].op_ = op;
+                nodes[dst_id].left_son_ = src1_id;
+                nodes[dst_id].right_son_ = src2_id;
+                return {op, dst, re_src1, re_src2};
+            }
+        }
+    }
 };
 
 class Intermediate {

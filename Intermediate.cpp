@@ -373,6 +373,14 @@ void Intermediate::peephole_optimize() {
     }
 
     // todo: useless label removal
+
+    // todo: assign statement convention
+    // like: add a b 0, mult a c 1
+    //       mult a 1 c, add a 0 b
+    // must sure that src2 is 0
+
+    // todo: const merge, make sure that src2 is 0
+    // like: add a 5 2, mult a 3 2
 }
 
 void Intermediate::divide_basic_block() {
