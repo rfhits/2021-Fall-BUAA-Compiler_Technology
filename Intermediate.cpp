@@ -33,6 +33,24 @@ bool is_cmp(IntermOp op) {
     }
 }
 
+bool is_read_op(IntermOp op) {
+    if (op == IntermOp::ARR_SAVE || op == IntermOp::PRINT) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
+bool is_write_op(IntermOp op) {
+    if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::GETINT ||
+        op == IntermOp::ARR_LOAD) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 bool is_modify_op(IntermOp op) {
     if (is_cmp(op) && is_arith(op) || is_bitwise(op) || op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
         return true;
@@ -40,6 +58,7 @@ bool is_modify_op(IntermOp op) {
         return false;
     }
 }
+
 
 Intermediate::Intermediate(SymbolTable &symbol_table, std::ofstream &out) : symbol_table_(symbol_table), out_(out) {
 }
@@ -324,7 +343,7 @@ void Intermediate::handle_error(std::string msg) {
 }
 
 void Intermediate::Optimize() {
-    if (enable_peephole_) peephole_optimize();
+    peephole_optimize();
     divide_basic_block();
     construct_flow_rel();
     add_modified_symbols();
@@ -333,7 +352,36 @@ void Intermediate::Optimize() {
 
 void Intermediate::peephole_optimize() {
     if (codes_.size() == 1) return;
-    auto it = codes_.begin() + 1;
+    // todo: remove useless label removal
+    // 1. collect useful label
+    // 2. for each jump, bne and beq, check if it is necessary
+    auto it = codes_.begin();
+    std::set<std::string> useful_labels = {};
+    while (it != codes_.end()) {
+        IntermOp &op = it->op;
+        if (op == IntermOp::JUMP || op == IntermOp::BNE || op == IntermOp::BEQ) {
+            useful_labels.insert(it->dst);
+        }
+        it++;
+    }
+
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        IntermOp op = it->op;
+        if (op == IntermOp::LABEL) {
+            std::string dst_label = it->dst;
+            if (useful_labels.find(dst_label) == useful_labels.end()) {
+                // useless LABEL
+                it = codes_.erase(it);
+                continue;
+            }
+        }
+        it++;
+    }
+
+
+    // temp elimination
+    it = codes_.begin() + 1;
     while (it != codes_.end()) {
         // DIV temp 5 b <-- pre_it
         // ADD a temp 0 <-- it
@@ -348,18 +396,35 @@ void Intermediate::peephole_optimize() {
         it++;
     }
 
-    // self assign
+    // remove self-assign
+    // add a a 0, add a 0 a
+    // sub a a 0
     it = codes_.begin();
     while (it != codes_.end()) {
-        if ((it->op == IntermOp::ADD || it->op == IntermOp::SUB) && it->dst == it->src1 && it->src2 == "0") {
+        std::string dst = it->dst;
+        IntermOp op = it->op;
+        std::string src1 = it->src1;
+        std::string src2 = it->src2;
+        // add a a 0, add a 0 a
+        if ((op == IntermOp::ADD) &&
+            ((dst == src1 && src2 == "0") || (dst == src2 && src1 == "0"))) {
             it = codes_.erase(it);
-            continue;
         }
-        if (it->op == IntermOp::MUL || it->op == IntermOp::DIV && it->dst == it->src1 && it->src2 == "1") {
+            // sub a a 0
+        else if (op == IntermOp::SUB && (dst == src1 && src2 == "0")) {
             it = codes_.erase(it);
-            continue;
         }
-        it++;
+            // mul a a 1, mul a 1 a
+        else if ((op == IntermOp::MUL) &&
+                 ((dst == src1 && src2 == "1") || (dst == src2 && src2 == "1"))) {
+            it = codes_.erase(it);
+        }
+            // div a a 1
+        else if (op == IntermOp::DIV && (dst == src1 && src2 == "1")) {
+            it = codes_.erase(it);
+        } else {
+            it++;
+        }
     }
 
     // JUMP, JUMP
@@ -373,7 +438,7 @@ void Intermediate::peephole_optimize() {
         it++;
     }
 
-    // todo: useless label removal
+
 
     // assign statement convention
     // like: add a b 0, multi a c 1
@@ -412,13 +477,13 @@ void Intermediate::peephole_optimize() {
 
 
     // const merge, make sure that src2 is 0
-    // like: add a 5 2, mult a 3 2
+    // like: add a 5 2, mul a 3 2
     it = codes_.begin();
     while (it != codes_.end()) {
         IntermOp op = it->op;
         std::string src1 = it->src1;
         std::string src2 = it->src2;
-        if ((is_arith(op)|| is_cmp(op)) && is_integer(src1) && is_integer(src2) ) {
+        if ((is_arith(op) || is_cmp(op)) && is_integer(src1) && is_integer(src2)) {
             int value = 0;
             int src1_value = std::stoi(src1);
             int src2_value = std::stoi(src2);
@@ -454,9 +519,9 @@ void Intermediate::peephole_optimize() {
             it->src2 = "0";
         }
 
-        if (op == IntermOp::MUL && ((src1 == "0")||(src2 == "0"))) {
+        if (op == IntermOp::MUL && ((src1 == "0") || (src2 == "0"))) {
             it->op = IntermOp::ADD;
-            it->src1  = "0";
+            it->src1 = "0";
             it->src2 = "0";
         }
         it++;
@@ -574,6 +639,10 @@ void Intermediate::new_func_block(std::string func_name) {
 
 void Intermediate::add_modified_symbols() {
     for (auto &func_block: func_blocks_) {
+        std::string & func_name = func_block.func_name_;
+        std::pair<bool, TableEntry*> search_res =  symbol_table_.SearchFunc(func_name);
+        if (!search_res.first) handle_error("func can't be found when add modified symbols");
+        if (search_res.second->data_type != DataType::VOID) func_block.AddModifiedSymbol("%RET");
         for (int block_id: func_block.block_ids_) {
             BasicBlock &basic_block = basic_blocks_[block_id];
             for (auto &code: basic_block.codes_) {
@@ -600,7 +669,7 @@ void Intermediate::common_expr() {
             std::string src1 = code.src1;
             std::string src2 = code.src2;
             if (op == IntermOp::CALL) {
-                const std::string& func_name = dst;
+                const std::string &func_name = dst;
                 for (auto func_block: func_blocks_) {
                     if (func_block.func_name_ == func_name) {
                         manager.RemoveNodes(func_block.modified_symbols_);

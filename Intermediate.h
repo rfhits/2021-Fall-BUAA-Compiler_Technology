@@ -75,22 +75,9 @@ bool is_cmp(IntermOp op);
 
 // dst is read, not changed
 // especially for the arr_save op, it is read from src2
-bool is_read_op(IntermOp op) {
-    if (op == IntermOp::ARR_SAVE || op == IntermOp::PRINT) {
-        return true;
-    } else {
-        return false;
-    }
-}
+bool is_read_op(IntermOp op);
 
-bool is_write_op(IntermOp op) {
-    if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::GETINT ||
-        op == IntermOp::ARR_LOAD) {
-        return true;
-    } else {
-        return false;
-    }
-}
+bool is_write_op(IntermOp op) ;
 
 struct IntermCode {
     std::string dst;
@@ -108,17 +95,6 @@ std::string interm_code_to_string(const IntermCode &code, bool auto_indent);
 
 std::string get_op_string(IntermOp op);
 
-bool is_assign_code(IntermCode code) {
-    bool src_contains_0 = code.src1 == "0" || code.src2 == "0";
-
-    if (code.op == IntermOp::ADD && src_contains_0) {
-        return true;
-    } else if (code.src2 == "0" && code.op == IntermOp::SUB) {
-        return true;
-    } else if (true) {
-        return false;
-    }
-}
 
 class DAGNode {
 public:

@@ -1111,7 +1111,7 @@ void Parser::FuncDef() {
         if (func_type == DataType::VOID) {
             // has return statement or not does not matter
             // add a return statement for block
-            if (item_types.back() != BlockItemType::RETURN_STMT) {
+            if (item_types.empty() ||  (item_types.back() != BlockItemType::RETURN_STMT)) {
                 intermediate_.AddMidCode("", IntermOp::RET, "", "");
             }
         } else {
