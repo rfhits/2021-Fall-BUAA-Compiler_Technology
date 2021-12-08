@@ -328,6 +328,7 @@ void Intermediate::Optimize() {
     divide_basic_block();
     construct_flow_rel();
     add_modified_symbols();
+    common_expr();
 }
 
 void Intermediate::peephole_optimize() {
@@ -374,13 +375,92 @@ void Intermediate::peephole_optimize() {
 
     // todo: useless label removal
 
-    // todo: assign statement convention
-    // like: add a b 0, mult a c 1
-    //       mult a 1 c, add a 0 b
+    // assign statement convention
+    // like: add a b 0, multi a c 1
+    //       multi a 1 c, add a 0 b
     // must sure that src2 is 0
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        if (it->op == IntermOp::ADD && it->src1 == "0") {
+            std::string re_src1 = it->src2;
+            std::string re_src2 = it->src1;
+            it->src1 = re_src2;
+            it->src2 = re_src1;
+        } else if (it->op == IntermOp::SUB && it->src2 == "0") {
+            it->op = IntermOp::ADD;
+        } else if (it->op == IntermOp::MUL) {
+            // MUL dst 1 src2
+            if (it->src1 == "1") {
+                it->op = IntermOp::ADD;
+                it->src1 = it->src2;
+                it->src2 = "0";
+            }
+                // MUL dst src1 1
+            else if (it->src2 == "1") {
+                it->op = IntermOp::ADD;
+                it->src2 = "0";
+            } else {
+                // pass
+            }
+        } else if (it->op == IntermOp::DIV && it->src2 == "1") {
+            // DIV dst src1 1
+            it->op = IntermOp::ADD;
+            it->src2 = "0";
+        }
+        it++;
+    }
 
-    // todo: const merge, make sure that src2 is 0
+
+    // const merge, make sure that src2 is 0
     // like: add a 5 2, mult a 3 2
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        IntermOp op = it->op;
+        std::string src1 = it->src1;
+        std::string src2 = it->src2;
+        if ((is_arith(op)|| is_cmp(op)) && is_integer(src1) && is_integer(src2) ) {
+            int value = 0;
+            int src1_value = std::stoi(src1);
+            int src2_value = std::stoi(src2);
+            if (op == IntermOp::ADD) value = src1_value + src2_value;
+
+            else if (op == IntermOp::SUB) value = src1_value - src2_value;
+
+            else if (op == IntermOp::MUL) value = src1_value * src2_value;
+
+            else if (op == IntermOp::DIV) value = src1_value / src2_value;
+
+            else if (op == IntermOp::MOD) value = src1_value % src2_value;
+
+            else if (op == IntermOp::EQ) value = (src1_value == src2_value);
+
+            else if (op == IntermOp::NEQ) value = (src1_value != src2_value);
+
+            else if (op == IntermOp::LSS) value = src1_value < src2_value;
+
+            else if (op == IntermOp::LEQ) value = src1_value <= src2_value;
+
+            else if (op == IntermOp::GRE) value = src1_value > src2_value;
+
+            else if (op == IntermOp::GEQ) value = src1_value >= src2_value;
+            it->op = IntermOp::ADD;
+            it->src1 = std::to_string(value);
+            it->src2 = "0";
+        }
+
+        if (op == IntermOp::SUB && (src1 == src2)) {
+            it->op = IntermOp::ADD;
+            it->src1 = "0";
+            it->src2 = "0";
+        }
+
+        if (op == IntermOp::MUL && ((src1 == "0")||(src2 == "0"))) {
+            it->op = IntermOp::ADD;
+            it->src1  = "0";
+            it->src2 = "0";
+        }
+        it++;
+    }
 }
 
 void Intermediate::divide_basic_block() {
@@ -504,35 +584,6 @@ void Intermediate::add_modified_symbols() {
             }
         }
     }
-
-}
-
-std::pair<bool, int> search_in_nodes(std::vector<DAGNode> &nodes, IntermCode &code) {
-    IntermOp op = code.op;
-    std::string dst = code.dst;
-    std::string src1 = code.src1;
-    std::string src2 = code.src2;
-
-    for (auto &node: nodes) {
-        if (node.op_ == op) {
-            if (op == IntermOp::ADD || op == IntermOp::MUL) {
-                if (nodes[node.sons_[0]].ContainsSymbol(src1) && nodes[node.sons_[1]].ContainsSymbol(src2) ||
-                    nodes[node.sons_[0]].ContainsSymbol(src2) && nodes[node.sons_[1]].ContainsSymbol(src1)) {
-                    return std::make_pair(true, node.id_);
-                } else {
-                    continue;
-                }
-            } else {
-                if (nodes[node.sons_[0]].ContainsSymbol(src1) && nodes[node.sons_[1]].ContainsSymbol(src2)) {
-                    return std::make_pair(true, node.id_);
-                } else {
-                    continue;
-                }
-            }
-        } else {
-            continue;
-        }
-    }
 }
 
 void Intermediate::common_expr() {
@@ -541,33 +592,24 @@ void Intermediate::common_expr() {
         std::vector<DAGNode> nodes;
         std::vector<IntermCode> new_codes;
         std::unordered_map<std::string, int> symbol_to_node;
+        BasicBlockDAGManager manager = BasicBlockDAGManager{};
 
         for (auto &code: basic_block.codes_) {
             IntermOp op = code.op;
             std::string dst = code.dst;
             std::string src1 = code.src1;
             std::string src2 = code.src2;
-            int dst_node_id = -1;
-            auto it_dst = symbol_to_node.find(src1);
-            if (it_dst != symbol_to_node.end()) {
-                dst_node_id = it_dst->second; // mark it, may change
-            }
-
-            auto search_res = search_in_nodes(nodes, code);
-            // there is a pattern for op dst src1 src2, so we can use common expr
-            if (search_res.first) {
-                std::string copy_name = nodes[search_res.second].GetSymbolName();
-                new_codes.emplace_back(IntermOp::ADD, dst, copy_name, "0");
-                if (dst_node_id != -1) {
-                    nodes[dst_node_id].RemoveSymbol(dst);
+            if (op == IntermOp::CALL) {
+                const std::string& func_name = dst;
+                for (auto func_block: func_blocks_) {
+                    if (func_block.func_name_ == func_name) {
+                        manager.RemoveNodes(func_block.modified_symbols_);
+                        break;
+                    }
                 }
-                symbol_to_node[dst] = search_res.second;
-                nodes[search_res.second].AddSymbol(dst);
+            } else {
+                code = manager.GetEvalCode(code);
             }
-            // get a node id for src1, if not exits, generate
-            // get a node id for src2, if not exits, generate
-            // gen a new node for the dst, then remove from old
-
         }
     }
 
@@ -583,7 +625,6 @@ std::string get_op_string(IntermOp op) {
     }
     return str_op;
 }
-
 
 std::string interm_code_to_string(const IntermCode &code, bool auto_indent) {
     std::string output;

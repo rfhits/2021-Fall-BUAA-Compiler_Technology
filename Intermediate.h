@@ -29,7 +29,7 @@ enum class IntermOp {
     FUNC_BEGIN, FUNC_END,
     PREPARE_CALL, PUSH_VAL, PUSH_ARR, CALL,
 
-    RET
+    RET, INVALID
 };
 
 
@@ -64,6 +64,7 @@ const std::unordered_map<IntermOp, std::string> op_to_str = {
         {IntermOp::PUSH_ARR,     "PUSH_ARR"},
         {IntermOp::CALL,         "CALL"},
         {IntermOp::RET,          "RET"},
+        {IntermOp::INVALID,      "INVALID"}
 };
 
 bool is_arith(IntermOp op);
@@ -123,11 +124,11 @@ class DAGNode {
 public:
     int id_;
     std::vector<std::string> symbols_; // the node represent these symbols
-    IntermOp op_;
-    int left_son_;
-    int right_son_;
+    IntermOp op_ = IntermOp::INVALID;
+    int left_son_{};
+    int right_son_{};
 
-    DAGNode(int id) {
+    explicit DAGNode(int id) {
         this->id_ = id;
     }
 
@@ -144,10 +145,15 @@ public:
     }
 
     void AddSymbol(const std::string &symbol_name) {
-        this->symbols_.push_back(symbol_name);
+        auto it = std::find(symbols_.begin(), symbols_.end(), symbol_name);
+        if (it != symbols_.end()) {
+            return;
+        } else {
+            this->symbols_.push_back(symbol_name);
+        }
     }
 
-    void RemoveSymbol(std::string symbol) {
+    void RemoveSymbol(const std::string &symbol) {
         auto it = std::find(symbols_.begin(), symbols_.end(), symbol);
         if (it == symbols_.end()) std::cerr << "remove a not find symbol" << std::endl;
         symbols_.erase(it);
@@ -238,9 +244,8 @@ public:
 };
 
 class FuncBlock {
-private:
-    std::set<std::string> modified_symbols_;
 public:
+    std::set<std::string> modified_symbols_;
     std::vector<int> block_ids_; // block id
     std::string func_name_;
 
@@ -263,11 +268,10 @@ public:
     std::vector<DAGNode> nodes;
     std::unordered_map<std::string, int> symbol_to_node_id;
 
-
     // @brief: given a symbol name, search it in the table
     //         if found, return its node id
     //         else: new a node, add to table
-    int get_symbol_node_require_new(std::string symbol) {
+    int get_symbol_node_require_new(const std::string &symbol) {
         auto it = symbol_to_node_id.find(symbol);
         if (it != symbol_to_node_id.end()) {
             return it->second;
@@ -281,7 +285,8 @@ public:
         }
     }
 
-    std::pair<bool, int> find_pattern(IntermOp op, std::string src1, std::string src2) {
+    // @pre: the op is binary op
+    std::pair<bool, int> find_pattern(IntermOp op, const std::string &src1, std::string src2) {
         for (auto &node: nodes) {
             if (node.op_ != op) continue;
             int left_id = node.left_son_;
@@ -302,6 +307,16 @@ public:
         return std::make_pair(false, -1);
     }
 
+    void RemoveNodes(std::set<std::string> &modified_symbols) {
+        for (auto &symbol: modified_symbols) {
+            auto it = symbol_to_node_id.find(symbol);
+            if ( it != symbol_to_node_id.end()) {
+                nodes[it->second].RemoveSymbol(symbol);
+                symbol_to_node_id.erase(it);
+                get_symbol_node_require_new(symbol);
+            }
+        }
+    }
 
     // given a code, return an eval code
     IntermCode GetEvalCode(const IntermCode &code) {
@@ -316,17 +331,19 @@ public:
                 int id = get_symbol_node_require_new(src2);
                 std::string re_src2 = nodes[id].GetSymbolName();
                 return {op, dst, src1, re_src2};
-            } else {
+            } else { // PRINT
                 int id = get_symbol_node_require_new(dst);
                 std::string re_dst = nodes[id].GetSymbolName();
                 return {op, re_dst, src1, src2};
             }
         }
-            // is write op
-        else {
+            // is written op
+        else if (is_write_op(op)) {
             // assign
             if (op == IntermOp::ADD && src2 == "0") {
                 int id = get_symbol_node_require_new(src1);
+                nodes[id].AddSymbol(dst);
+                symbol_to_node_id[dst] = id;
                 std::string re_src1 = nodes[id].GetSymbolName();
                 return {op, dst, re_src1, src2};
             }
@@ -366,6 +383,10 @@ public:
                 return {op, dst, re_src1, re_src2};
             }
         }
+            // a symple code
+        else {
+            return code;
+        }
     }
 };
 
@@ -397,6 +418,8 @@ private:
     void new_basic_block();
 
     void new_func_block(std::string func_name);
+
+    std::set<std::string> get_modified_symbols(std::string func_name);
 
     void divide_basic_block();
 
