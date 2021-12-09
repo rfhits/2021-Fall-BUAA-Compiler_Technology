@@ -120,6 +120,10 @@ public:
         }
     }
 
+    bool IsEmpty() {
+        return this->symbols_.empty();
+    }
+
     void AddSymbol(const std::string &symbol_name) {
         auto it = std::find(symbols_.begin(), symbols_.end(), symbol_name);
         if (it != symbols_.end()) {
@@ -262,6 +266,7 @@ public:
     }
 
     // @pre: the op is binary op
+    // @brief: op is the same and the son contains the symbol needed
     std::pair<bool, int> find_pattern(IntermOp op, const std::string &src1, std::string src2) {
         for (auto &node: nodes) {
             if (node.op_ != op) continue;
@@ -269,7 +274,7 @@ public:
             int right_id = node.right_son_;
             if (op == IntermOp::ADD || op == IntermOp::MUL) {
                 if ((nodes[left_id].ContainsSymbol(src1) && nodes[right_id].ContainsSymbol(src2)) ||
-                    (nodes[left_id].ContainsSymbol(src2) && nodes[right_id].ContainsSymbol(src2))) {
+                    (nodes[left_id].ContainsSymbol(src2) && nodes[right_id].ContainsSymbol(src1))) {
                     return std::make_pair(true, node.id_);
                 }
             } else {
@@ -294,6 +299,15 @@ public:
         }
     }
 
+    // remove the symbol from the node manager
+    void remove_symbol(const std::string& symbol) {
+        auto it = symbol_to_node_id.find(symbol);
+        if (it == symbol_to_node_id.end()) return;
+        // really exists
+        nodes[it->second].RemoveSymbol(symbol);
+        symbol_to_node_id.erase(it);
+    }
+
     // given a code, return an eval code
     IntermCode GetEvalCode(const IntermCode &code) {
         std::string dst = code.dst;
@@ -307,7 +321,9 @@ public:
                 int id = get_symbol_node_require_new(src2);
                 std::string re_src2 = nodes[id].GetSymbolName();
                 return {op, dst, src1, re_src2};
-            } else { // PRINT
+            } else {
+                // PRINT, remove %ret
+                remove_symbol("%RET");
                 int id = get_symbol_node_require_new(dst);
                 std::string re_dst = nodes[id].GetSymbolName();
                 return {op, re_dst, src1, src2};
@@ -317,11 +333,21 @@ public:
         else if (is_write_op(op)) {
             // assign
             if (op == IntermOp::ADD && src2 == "0") {
+                remove_symbol(dst); // dst is assigned, so remove if from the table and nodes
                 int id = get_symbol_node_require_new(src1);
                 nodes[id].AddSymbol(dst);
                 symbol_to_node_id[dst] = id;
                 std::string re_src1 = nodes[id].GetSymbolName();
                 return {op, dst, re_src1, src2};
+            }
+
+            // read a value from io, return the original code, but change the table
+            // same as the arr_load value arr_name index
+            if (op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
+                remove_symbol(dst);
+                int id = get_symbol_node_require_new(dst);
+                symbol_to_node_id[dst] = id;
+                return code;
             }
 
             std::pair<bool, int> search_res = find_pattern(op, src1, src2);
@@ -330,14 +356,18 @@ public:
                 // 1. find dst origin node id, if not exist ...
                 // 2. move this symbol from the origin node, move to the pattern, change the symbol table
                 // if the origin id not exists, directly move it to the pattern
-                auto it = symbol_to_node_id.find(dst);
-                if (it != symbol_to_node_id.end()) {
-                    int origin_id = it->second;
-                    nodes[origin_id].RemoveSymbol(dst);
+                remove_symbol(dst);
+                symbol_to_node_id[dst] = pattern_id; // the dst is in the node
+                // through we find a pattern, but the node may be empty
+                if (nodes[pattern_id].IsEmpty()) {
+                    nodes[pattern_id].AddSymbol(dst);
+                    std::string re_src1 = nodes[nodes[pattern_id].left_son_].GetSymbolName();
+                    std::string re_src2 = nodes[nodes[pattern_id].right_son_].GetSymbolName();
+                    return {op, dst, re_src1, re_src2};
+                } else {
+                    nodes[pattern_id].AddSymbol(dst);
+                    return {IntermOp::ADD, dst, nodes[pattern_id].GetSymbolName(), "0"};
                 }
-                symbol_to_node_id[dst] = pattern_id; // new or remove, both work
-                nodes[pattern_id].AddSymbol(dst);
-                return {IntermOp::ADD, dst, nodes[pattern_id].GetSymbolName(), "0"};
             } else {
                 // get the src1 and src2 node,
                 // find dst origin node,
@@ -346,11 +376,7 @@ public:
                 int src2_id = get_symbol_node_require_new(src2);
                 std::string re_src1 = nodes[src1_id].GetSymbolName();
                 std::string re_src2 = nodes[src2_id].GetSymbolName();
-                auto it = symbol_to_node_id.find(dst);
-                if (it != symbol_to_node_id.end()) {
-                    nodes[it->second].RemoveSymbol(dst);
-                    symbol_to_node_id.erase(it);
-                }
+                remove_symbol(dst);
                 // now we are sure dst is not in the table and nodes
                 int dst_id = get_symbol_node_require_new(dst);
                 nodes[dst_id].op_ = op;
@@ -359,7 +385,7 @@ public:
                 return {op, dst, re_src1, re_src2};
             }
         }
-            // a symple code
+            // a simple code
         else {
             return code;
         }
@@ -397,13 +423,15 @@ private:
 
     std::set<std::string> get_modified_symbols(std::string func_name);
 
-    void divide_basic_block();
+    void divide_blocks();
 
     void construct_flow_rel();
 
     void add_modified_symbols();
 
     void common_expr();
+
+    void sync_codes();
 
     void handle_error(std::string msg);
 

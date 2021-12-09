@@ -43,8 +43,8 @@ bool is_read_op(IntermOp op) {
 
 
 bool is_write_op(IntermOp op) {
-    if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::GETINT ||
-        op == IntermOp::ARR_LOAD) {
+    if (is_arith(op) || is_bitwise(op) || is_cmp(op) ||
+        op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
         return true;
     } else {
         return false;
@@ -337,22 +337,34 @@ Intermediate::rename_inline_symbol(const std::string &caller_name, const std::st
     return re_name;
 }
 
-//
 void Intermediate::handle_error(std::string msg) {
     std::cout << msg << std::endl;
 }
 
+void Intermediate::new_basic_block() {
+    cur_block_id_ += 1;
+    BasicBlock basic_block = BasicBlock(cur_block_id_);
+    this->basic_blocks_.push_back(basic_block);
+}
+
+void Intermediate::new_func_block(std::string func_name) {
+    FuncBlock func_block = FuncBlock(std::move(func_name));
+    this->func_blocks_.push_back(func_block);
+}
+
 void Intermediate::Optimize() {
     peephole_optimize();
-    divide_basic_block();
+    divide_blocks();
     construct_flow_rel();
     add_modified_symbols();
     common_expr();
+    sync_codes();
 }
 
 void Intermediate::peephole_optimize() {
     if (codes_.size() == 1) return;
-    // todo: remove useless label removal
+
+    // remove useless labels
     // 1. collect useful label
     // 2. for each jump, bne and beq, check if it is necessary
     auto it = codes_.begin();
@@ -378,7 +390,6 @@ void Intermediate::peephole_optimize() {
         }
         it++;
     }
-
 
     // temp elimination
     it = codes_.begin() + 1;
@@ -437,8 +448,6 @@ void Intermediate::peephole_optimize() {
         }
         it++;
     }
-
-
 
     // assign statement convention
     // like: add a b 0, multi a c 1
@@ -528,7 +537,8 @@ void Intermediate::peephole_optimize() {
     }
 }
 
-void Intermediate::divide_basic_block() {
+// @brief: divide codes into blocks, including basic blocks and function blocks
+void Intermediate::divide_blocks() {
     new_basic_block();
     for (int i = 0; i < codes_.size(); i++) {
         if (codes_[i].op == IntermOp::FUNC_BEGIN) {
@@ -570,8 +580,8 @@ void Intermediate::divide_basic_block() {
             basic_blocks_[i].label_codes_[0].op == IntermOp::FUNC_BEGIN) {
             std::string func_name = basic_blocks_[i].label_codes_[0].dst;
             new_func_block(func_name);
-            func_blocks_.back().AddBlock(i);
-            i += 1;
+            // func_blocks_.back().AddBlock(i);
+            // i += 1;
             while (!(!basic_blocks_[i].jb_codes_.empty() &&
                      basic_blocks_[i].jb_codes_.back().op == IntermOp::FUNC_END)) {
                 func_blocks_.back().AddBlock(i);
@@ -625,31 +635,28 @@ void Intermediate::construct_flow_rel() {
     }
 }
 
-
-void Intermediate::new_basic_block() {
-    cur_block_id_ += 1;
-    BasicBlock basic_block = BasicBlock(cur_block_id_);
-    this->basic_blocks_.push_back(basic_block);
-}
-
-void Intermediate::new_func_block(std::string func_name) {
-    FuncBlock func_block = FuncBlock(std::move(func_name));
-    this->func_blocks_.push_back(func_block);
-}
-
+// add the global variables that the function modified
 void Intermediate::add_modified_symbols() {
     for (auto &func_block: func_blocks_) {
-        std::string & func_name = func_block.func_name_;
-        std::pair<bool, TableEntry*> search_res =  symbol_table_.SearchFunc(func_name);
+        std::string &func_name = func_block.func_name_;
+        std::pair<bool, TableEntry *> search_res = symbol_table_.SearchFunc(func_name);
         if (!search_res.first) handle_error("func can't be found when add modified symbols");
-        if (search_res.second->data_type != DataType::VOID) func_block.AddModifiedSymbol("%RET");
+        if (search_res.second->data_type != DataType::VOID) {
+            func_block.AddModifiedSymbol("%RET");
+        }
+
         for (int block_id: func_block.block_ids_) {
             BasicBlock &basic_block = basic_blocks_[block_id];
             for (auto &code: basic_block.codes_) {
-                if (is_arith(code.op) || is_bitwise(code.op) || is_cmp(code.op) || (code.op == IntermOp::GETINT) ||
-                    (code.op == IntermOp::ARR_LOAD)) {
+                if ((is_arith(code.op) || is_bitwise(code.op) || is_cmp(code.op) || (code.op == IntermOp::GETINT) ||
+                     (code.op == IntermOp::ARR_LOAD)) && symbol_table_.is_global_symbol(code.dst)) {
                     func_block.AddModifiedSymbol(code.dst);
                 }
+
+                if (code.op == IntermOp::PRINT) {
+                    func_block.AddModifiedSymbol("%RET");
+                }
+
             }
         }
     }
@@ -682,6 +689,17 @@ void Intermediate::common_expr() {
         }
     }
 
+}
+
+// @brief: after DAG, the codes in blocks is different from the codes in Intermediate,
+//         so we need to sync them, then we can do the peephole optimize again
+void Intermediate::sync_codes() {
+    codes_.clear();
+    for (auto &basic_block: basic_blocks_) {
+        for (auto &code: basic_block.label_codes_) codes_.emplace_back(code);
+        for (auto &code: basic_block.codes_) codes_.emplace_back(code);
+        for (auto &code: basic_block.jb_codes_) codes_.emplace_back(code);
+    }
 }
 
 std::string get_op_string(IntermOp op) {

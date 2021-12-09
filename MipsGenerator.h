@@ -66,6 +66,8 @@ public:
 
     MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> &interm_codes, std::ofstream &out);
 
+    bool will_be_used_later(const std::string& symbol, int i);
+
     void translate();
 
     void remove_from_reg(std::string reg_name);
@@ -101,8 +103,6 @@ public:
     std::string assign_reg_require_load_from_memo(const std::string& symbol);
 
     std::string assign_reg_without_load_from_memo(std::string symbol);
-
-
 
     void add_code(const std::string &code);
 

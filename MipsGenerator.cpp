@@ -67,7 +67,6 @@ void MipsGenerator::remove_from_reg(std::string reg_name) {
     }
 }
 
-
 // @brief: given a symbol, return its offset to its base pointer $sp or $gp
 //         we have already considered the function call stack size
 //         so u don't need to add the frame size back
@@ -156,7 +155,9 @@ void MipsGenerator::remove_t_regs_save_to_memo() {
 //         it's dangerous.
 void MipsGenerator::save_symbol_to_the_reg(std::string symbol, const std::string &reg_name) {
     if (is_integer(symbol)) {
-        add_code("add", reg_name, "$zero", symbol);
+        add_code("add", reg_name, "$zero", symbol); // do not change the order, or the Mars error
+    } else if (symbol == "%RET") {
+        add_code("add", reg_name, "$v0", "$0");
     } else {
         std::pair<bool, std::string> search_res = search_in_st_regs(symbol);
         if (search_res.first) {
@@ -292,7 +293,6 @@ std::string MipsGenerator::assign_t_reg(std::string symbol) {
 
 // @brief: load a symbol from stack to reg
 // @pre: the symbol not in the regs
-// todo:
 std::string MipsGenerator::assign_s_reg_require_load_from_memo(const std::string &symbol) {
     bool has_empty = false;
     int reg_no = -1;
@@ -320,6 +320,7 @@ std::string MipsGenerator::assign_s_reg_require_load_from_memo(const std::string
     move_reg_no_to_order_end("s", reg_no);
     return "$s" + std::to_string(reg_no);
 }
+
 
 void MipsGenerator::add_error(const std::string &error_msg) {
     std::cerr << "!error: " + error_msg << std::endl << std::endl;
@@ -386,6 +387,7 @@ void MipsGenerator::add_code(const std::string op, const std::string &reg_name, 
     }
 }
 
+
 void MipsGenerator::translate() {
     // use the global table in symbol table to assign memory in .data or in $gp
     bool init_main = false;
@@ -397,8 +399,8 @@ void MipsGenerator::translate() {
         add_code(code);
     }
     add_code(".text");
-    for (auto &i_code: interm_codes_) {
-        // todo: sub gp at the begin, the all the content can use add to access
+    for (int i = 0; i < interm_codes_.size(); i++) {
+        IntermCode &i_code = interm_codes_[i];
         add_code("");
         add_code("# " + interm_code_to_string(i_code, false));
         IntermOp op = i_code.op;
@@ -441,7 +443,7 @@ void MipsGenerator::translate() {
                 if (reg_search_res.first) {
                     // sw reg_name param_off($sp)
                     add_code("sw", reg_search_res.second, param_off, "$sp");
-                    if (dst[0] == '#') remove_from_reg(reg_search_res.second);
+                    if (dst[0] == '#' && !will_be_used_later(dst, i)) remove_from_reg(reg_search_res.second);
                 } else { // in memory, direct load to $a0
                     std::pair<bool, TableEntry *> table_search_res =
                             symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, dst);
@@ -567,22 +569,22 @@ void MipsGenerator::translate() {
                     src2_reg = get_reg_require_load_from_memo(src2);
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("add", dst_reg, src2_reg, std::stoi(src1));
-                    if (src2 != dst && src2[0] == '#')
+                    if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i))
                         remove_from_reg(src2_reg);
                 } else if (is_integer(src2)) {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("add", dst_reg, src1_reg, std::stoi(src2));
-                    if (src1 != dst && src1[0] == '#')
+                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i))
                         remove_from_reg(src1_reg);
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("add", dst_reg, src1_reg, src2_reg);
-                    if (src1 != dst && src1[0] == '#')
+                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i))
                         remove_from_reg(src1_reg);
-                    if (src2 != dst && src2[0] == '#')
+                    if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i))
                         remove_from_reg(src2_reg);
                 }
             }
@@ -608,8 +610,8 @@ void MipsGenerator::translate() {
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("sub", dst_reg, src1_reg, src2_reg);
                 }
-                if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-                if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+                if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
             }
                 // MUL
             else if (op == IntermOp::MUL) {
@@ -631,8 +633,8 @@ void MipsGenerator::translate() {
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("mul", dst_reg, src1_reg, src2_reg);
                 }
-                if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-                if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+                if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
             }
                 // DIV
             else if (op == IntermOp::DIV) {
@@ -646,8 +648,10 @@ void MipsGenerator::translate() {
                     src2_reg = get_reg_require_load_from_memo(src2);
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("add", "$a1", "$0", src1);
-                    add_code("div", dst_reg, "$a1", src2_reg);
+                    add_code("div", "$a1", src2_reg);
+                    add_code("mflo", dst_reg, "", "");
                 } else if (is_integer(src2)) {
+                    // MIPS wont judge
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("div", dst_reg, src1_reg, src2);
@@ -655,10 +659,11 @@ void MipsGenerator::translate() {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("div", dst_reg, src1_reg, src2_reg);
+                    add_code("div", src1_reg, src2_reg);
+                    add_code("mflo", dst_reg, "", "");
                 }
-                if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-                if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+                if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
             }
                 // MOD
             else {
@@ -685,8 +690,8 @@ void MipsGenerator::translate() {
                     add_code("div", src1_reg, src2_reg);
                     add_code("mfhi " + dst_reg);
                 }
-                if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-                if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+                if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
             }
 
         }
@@ -707,7 +712,7 @@ void MipsGenerator::translate() {
                     } else {
                         src2_reg = get_reg_require_load_from_memo(src2);
                         add_code("sne", dst_reg, "$0", src2_reg);
-                        if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                        if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
                     }
                 } else if (is_integer(src2)) {
                     if (std::stoi(src2) == 0) {
@@ -715,7 +720,7 @@ void MipsGenerator::translate() {
                     } else {
                         src1_reg = get_reg_require_load_from_memo(src1);
                         add_code("sne", dst_reg, "$0", src1_reg);
-                        if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
+                        if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
                     }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
@@ -723,8 +728,8 @@ void MipsGenerator::translate() {
                     add_code("sne", bool_reg1, "$0", src1_reg);
                     add_code("sne", bool_reg2, "$0", src2_reg);
                     add_code("and", dst_reg, bool_reg1, bool_reg2);
-                    if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-                    if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+                    if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
                 }
 
             }
@@ -739,7 +744,7 @@ void MipsGenerator::translate() {
                     } else {
                         src2_reg = get_reg_require_load_from_memo(src2);
                         add_code("sne", dst_reg, "$0", src2_reg);
-                        if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                        if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
                     }
                 } else if (is_integer(src2)) {
                     if (std::stoi(src2) != 0) {
@@ -747,7 +752,7 @@ void MipsGenerator::translate() {
                     } else {
                         src1_reg = get_reg_require_load_from_memo(src1);
                         add_code("sne", dst_reg, "$0", src1_reg);
-                        if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
+                        if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
                     }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
@@ -755,8 +760,8 @@ void MipsGenerator::translate() {
                     add_code("sne", bool_reg1, "$0", src1_reg);
                     add_code("sne", bool_reg2, "$0", src2_reg);
                     add_code("or", dst_reg, bool_reg1, bool_reg2);
-                    if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-                    if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+                    if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
                 }
             }
                 // NOT
@@ -769,7 +774,7 @@ void MipsGenerator::translate() {
                     add_code("sne", "$a0", "$0", src1_reg); // $a0: != 0?
                     add_code("add", "$a1", "$0", 1); // $a0: != 0?
                     add_code("sub", dst_reg, "$a1", "$a0");
-                    if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
+                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
                 }
             }
         }
@@ -810,8 +815,8 @@ void MipsGenerator::translate() {
                 src2_reg = get_reg_require_load_from_memo(src2);
                 add_code(instr, dst_reg, src1_reg, src2_reg);
             }
-            if (src1 != dst && src1[0] == '#') remove_from_reg(src1_reg);
-            if (src2 != dst && src2[0] == '#') remove_from_reg(src2_reg);
+            if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
+            if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
         }
             // INIT ARR PTR
         else if (op == IntermOp::INIT_ARR_PTR) {
@@ -958,5 +963,33 @@ void MipsGenerator::translate() {
             add_error("undefined instruction");
         }
     }
+}
+
+
+// @brief: check the symbol will be used after interm_codes[i] in the same block,
+//         to check if a temp symbol can be released
+bool MipsGenerator::will_be_used_later(const std::string &symbol, int i) {
+    // for those temp generated in the long expression like: a = b + c * d / e - f % d
+    // the common may spread it to other code in the same block
+    // end marks: FUNC_END, FUNC_BEGIN, Label, JUMP, BNE, BEQ
+    if (i >= interm_codes_.size()) return false;
+    bool will_be_used = false;
+    while (i < interm_codes_.size()) {
+        IntermCode &code = interm_codes_[i];
+        IntermOp op = code.op;
+        if (op == IntermOp::FUNC_BEGIN || op == IntermOp::FUNC_END ||
+            op == IntermOp::LABEL || op == IntermOp::JUMP ||
+            op == IntermOp::BNE || op == IntermOp::BEQ) {
+            return will_be_used;
+        }
+
+        if (code.src1 == symbol || code.src2 == symbol) {
+            will_be_used = true;
+            return true;
+        } else {
+            i++;
+        }
+    }
+    return will_be_used;
 }
 
