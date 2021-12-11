@@ -77,7 +77,7 @@ bool is_cmp(IntermOp op);
 // especially for the arr_save op, it is read from src2
 bool is_read_op(IntermOp op);
 
-bool is_write_op(IntermOp op) ;
+bool is_write_op(IntermOp op);
 
 struct IntermCode {
     std::string dst;
@@ -225,7 +225,12 @@ public:
 
 class FuncBlock {
 public:
-    std::set<std::string> modified_symbols_;
+    std::set<std::string> modified_global_symbols_;
+    std::set<int> modified_param_orders = {};
+    std::set<std::string> read_global_symbols_;
+    std::set<int> read_param_orders = {};
+    std::unordered_map<std::string, int> param_arr_name_to_order = {};
+
     std::vector<int> block_ids_; // block id
     std::string func_name_;
 
@@ -237,8 +242,53 @@ public:
         this->block_ids_.push_back(block_id);
     }
 
+    // @brief: add those INT_ARR param to map
+    void AddArrParam(const std::string &arr_name, int i) {
+        this->param_arr_name_to_order[arr_name] = i;
+    }
+
+    // @brief: given an array name, check whether it is the function's param
+    bool ContainsParamArr(const std::string &arr_name) {
+        auto it = this->param_arr_name_to_order.find(arr_name);
+        return it == param_arr_name_to_order.end();
+    }
+
+    // @brief: given a modified param name,
+    //         transfer into its param order and add to modified order
+    void AddModifiedParam(const std::string &name) {
+        auto it = param_arr_name_to_order.find(name);
+        if (it == param_arr_name_to_order.end()) {
+            std::cerr << "this param name can't be found" << std::endl;
+        } else {
+            this->modified_param_orders.insert(it->second);
+        }
+    }
+
     void AddModifiedSymbol(const std::string &symbol) {
-        this->modified_symbols_.insert(symbol);
+        this->modified_global_symbols_.insert(symbol);
+    }
+
+    void AddReadSymbol(const std::string &symbol) {
+        this->read_global_symbols_.insert(symbol);
+    }
+
+    void AddReadParam(std::string param_name) {
+        auto it = this->param_arr_name_to_order.find(param_name);
+        if (it == param_arr_name_to_order.end())
+            std::cerr << "can't find the param" + param_name + " in add read param" << std::endl;
+        else {
+            this->read_param_orders.insert(it->second);
+        }
+    }
+
+    bool ContainsModifiedSymbol(const std::string &name) {
+        auto it = this->modified_global_symbols_.find(name);
+        return it == modified_global_symbols_.end();
+    }
+
+    bool ContainsModifiedParamOrd(int ord) {
+        auto it = this->modified_param_orders.find(ord);
+        return it == modified_param_orders.end();
     }
 
 };
@@ -291,7 +341,7 @@ public:
     void RemoveNodes(std::set<std::string> &modified_symbols) {
         for (auto &symbol: modified_symbols) {
             auto it = symbol_to_node_id.find(symbol);
-            if ( it != symbol_to_node_id.end()) {
+            if (it != symbol_to_node_id.end()) {
                 nodes[it->second].RemoveSymbol(symbol);
                 symbol_to_node_id.erase(it);
                 get_symbol_node_require_new(symbol);
@@ -300,7 +350,7 @@ public:
     }
 
     // remove the symbol from the node manager
-    void remove_symbol(const std::string& symbol) {
+    void remove_symbol(const std::string &symbol) {
         auto it = symbol_to_node_id.find(symbol);
         if (it == symbol_to_node_id.end()) return;
         // really exists
@@ -429,11 +479,15 @@ private:
 
     void add_modified_symbols();
 
+    void add_read_symbols();
+
     void common_expr();
 
     void sync_codes();
 
     void handle_error(std::string msg);
+
+    std::pair<bool, int> search_func_block_by_name(std::string func_name);
 
 public:
     std::vector<IntermCode> codes_;

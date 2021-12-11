@@ -537,8 +537,9 @@ void Intermediate::peephole_optimize() {
     }
 }
 
-// @brief: divide codes into blocks, including basic blocks and function blocks
+// @brief: divide codes into basic blocks and function blocks
 void Intermediate::divide_blocks() {
+    // divide basic blocks
     new_basic_block();
     for (int i = 0; i < codes_.size(); i++) {
         if (codes_[i].op == IntermOp::FUNC_BEGIN) {
@@ -574,14 +575,29 @@ void Intermediate::divide_blocks() {
         }
     }
 
+    // divide function blocks
     int i = 0;
     while (i < basic_blocks_.size()) {
         if (!basic_blocks_[i].label_codes_.empty() &&
             basic_blocks_[i].label_codes_[0].op == IntermOp::FUNC_BEGIN) {
             std::string func_name = basic_blocks_[i].label_codes_[0].dst;
             new_func_block(func_name);
-            // func_blocks_.back().AddBlock(i);
-            // i += 1;
+            FuncBlock &func_block = func_blocks_.back();
+
+            // construct it's params
+            std::pair<bool, TableEntry *> search_res = symbol_table_.SearchFunc(func_name);
+            if (!search_res.first) handle_error("func can't be found when add modified symbols");
+            int param_num = search_res.second->value;
+            for (int j = 0; j < param_num; ++j) {
+                TableEntry *param_entry = symbol_table_.GetKthParam(func_name, j);
+                if (param_entry->data_type == DataType::INT_ARR) {
+                    func_block.AddArrParam(param_entry->name, j);
+                } else {
+                    continue;
+                }
+            }
+
+            // add the basic block id to function block
             while (!(!basic_blocks_[i].jb_codes_.empty() &&
                      basic_blocks_[i].jb_codes_.back().op == IntermOp::FUNC_END)) {
                 func_blocks_.back().AddBlock(i);
@@ -635,28 +651,156 @@ void Intermediate::construct_flow_rel() {
     }
 }
 
-// add the global variables that the function modified
+// @brief: add the global variables that the function modified,
+//         add the param array order that the function modified
 void Intermediate::add_modified_symbols() {
     for (auto &func_block: func_blocks_) {
         std::string &func_name = func_block.func_name_;
+
         std::pair<bool, TableEntry *> search_res = symbol_table_.SearchFunc(func_name);
-        if (!search_res.first) handle_error("func can't be found when add modified symbols");
         if (search_res.second->data_type != DataType::VOID) {
             func_block.AddModifiedSymbol("%RET");
         }
 
         for (int block_id: func_block.block_ids_) {
             BasicBlock &basic_block = basic_blocks_[block_id];
-            for (auto &code: basic_block.codes_) {
+            for (int i = 0; i < basic_block.codes_.size(); i++) {
+                auto &code = basic_block.codes_[i];
+                IntermOp op = code.op;
+
+                std::string dst = code.dst;
                 if ((is_arith(code.op) || is_bitwise(code.op) || is_cmp(code.op) || (code.op == IntermOp::GETINT) ||
                      (code.op == IntermOp::ARR_LOAD)) && symbol_table_.is_global_symbol(code.dst)) {
                     func_block.AddModifiedSymbol(code.dst);
                 }
-
-                if (code.op == IntermOp::PRINT) {
+                    // PRINT, GETINT both load an op_number to %RET but not read it
+                else if (code.op == IntermOp::PRINT || code.op == IntermOp::GETINT) {
                     func_block.AddModifiedSymbol("%RET");
                 }
+                    // ARR_SAVE
+                else if (false && code.op == IntermOp::ARR_SAVE) {
+                    // the dst may be global or param
+                    if (symbol_table_.is_global_symbol(dst)) func_block.AddModifiedSymbol(dst);
+                    if (func_block.ContainsParamArr(dst)) func_block.AddModifiedParam(dst);
+                }
+                    // PREPARE_CALL
+                else if (code.op == IntermOp::PREPARE_CALL) {
+                    std::string callee_name = code.dst;
+                    std::pair<bool, int> search_callee_res = search_func_block_by_name(callee_name);
+                    if (!search_callee_res.first)
+                        handle_error("can't find func " + callee_name + " in get modified param");
+                    FuncBlock &callee_block = func_blocks_[search_callee_res.second];
 
+                    func_block.modified_global_symbols_.insert(callee_block.modified_global_symbols_.begin(),
+                                                               callee_block.modified_global_symbols_.end());
+
+//                    i += 1;
+//                    while (basic_block.codes_[i].op != IntermOp::CALL) {
+//                        auto &push_code = basic_block.codes_[i];
+//                        std::string push_dst = push_code.dst;
+//                        int push_order = std::stoi(push_code.src1);
+//                        if (push_code.op != IntermOp::PUSH_ARR) {
+//                            i += 1;
+//                            continue; // next push op
+//                        } else {
+//                            if (symbol_table_.is_global_symbol(push_dst) &&
+//                                callee_block.ContainsModifiedSymbol(push_dst)) {
+//                                func_block.AddModifiedSymbol(push_dst);
+//                            }
+//
+//                            if (func_block.ContainsParamArr(push_dst) &&
+//                                callee_block.ContainsModifiedParamOrd(push_order)) {
+//                                func_block.AddModifiedParam(push_dst);
+//                            }
+//                            i += 1;
+//                        }
+//                    }
+                } else if (op == IntermOp::INIT_ARR_PTR && symbol_table_.is_global_symbol(dst)) {
+                    // dead code, in a function block, if init occur, it is the local arr
+                    func_block.AddModifiedSymbol(dst);
+                } else {
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+// @brief: the function is use while data-flowing and occurring a call
+void Intermediate::add_read_symbols() {
+    for (auto &func_block: func_blocks_) {
+        std::string &func_name = func_block.func_name_;
+
+        std::pair<bool, TableEntry *> search_res = symbol_table_.SearchFunc(func_name);
+
+        for (int block_id: func_block.block_ids_) {
+            BasicBlock &basic_block = basic_blocks_[block_id];
+            for (int i = 0; i < basic_block.codes_.size(); i++) {
+                auto &code = basic_block.codes_[i];
+                std::string dst = code.dst;
+                IntermOp op = code.op;
+                std::string src1 = code.src1;
+                std::string src2 = code.src2;
+
+                if ((is_arith(code.op) || is_bitwise(code.op) || is_cmp(code.op))) {
+                    // these instructions won't read an array, which means we don't need to
+                    if (symbol_table_.is_global_symbol(src1)) func_block.AddReadSymbol(code.src1);
+                    if (symbol_table_.is_global_symbol(src2)) func_block.AddReadSymbol(code.src2);
+
+                }
+                    // PRINT
+                else if (code.op == IntermOp::PRINT && symbol_table_.is_global_symbol(dst)) {
+                    func_block.AddReadSymbol(dst);
+                }
+                    // ARR_SAVE arr_name, index, value, save the value to arr in memo
+                    // read the arr_name, index and value
+                else if (code.op == IntermOp::ARR_SAVE) {
+                    if (symbol_table_.is_global_symbol(dst)) func_block.AddModifiedSymbol(dst);
+                    if (symbol_table_.is_global_symbol(src1)) func_block.AddModifiedSymbol(src1);
+                    if (symbol_table_.is_global_symbol(src2)) func_block.AddModifiedSymbol(src2);
+                }
+                // ARR_LOAD value, arr_name, index
+                else if (op == IntermOp::ARR_LOAD) {
+                    if (symbol_table_.is_global_symbol(src1)) func_block.AddReadSymbol(code.src1);
+                    if (symbol_table_.is_global_symbol(src2)) func_block.AddReadSymbol(code.src2);
+                }
+                    // PREPARE_CALL
+                else if (code.op == IntermOp::PREPARE_CALL) {
+                    std::string callee_name = code.dst;
+                    std::pair<bool, int> search_callee_res = search_func_block_by_name(callee_name);
+                    if (!search_callee_res.first)
+                        handle_error("can't find func " + callee_name + " in get modified param");
+                    FuncBlock &callee_block = func_blocks_[search_callee_res.second];
+                    func_block.read_global_symbols_.insert(callee_block.read_global_symbols_.begin(),
+                                                           callee_block.read_global_symbols_.end());
+
+//                    i += 1;
+//                    while (basic_block.codes_[i].op != IntermOp::CALL) {
+//                        auto &push_code = basic_block.codes_[i];
+//                        std::string push_dst = push_code.dst;
+//                        int push_order = std::stoi(push_code.src1);
+//                        if (push_code.op != IntermOp::PUSH_ARR) {
+//                            i += 1;
+//                            continue; // next push op
+//                        } else {
+//                            if (symbol_table_.is_global_symbol(push_dst) &&
+//                                callee_block.ContainsModifiedSymbol(push_dst)) {
+//                                func_block.AddModifiedSymbol(push_dst);
+//                            }
+//
+//                            if (func_block.ContainsParamArr(push_dst) &&
+//                                callee_block.ContainsModifiedParamOrd(push_order)) {
+//                                func_block.AddModifiedParam(push_dst);
+//                            }
+//                            i += 1;
+//                        }
+//                    }
+
+                } else if ((op == IntermOp::PUSH_ARR || op == IntermOp::PUSH_VAL) && symbol_table_.is_global_symbol(dst)) {
+                    func_block.AddReadSymbol(dst);
+                } else {
+                    continue;
+                }
             }
         }
     }
@@ -679,7 +823,7 @@ void Intermediate::common_expr() {
                 const std::string &func_name = dst;
                 for (auto func_block: func_blocks_) {
                     if (func_block.func_name_ == func_name) {
-                        manager.RemoveNodes(func_block.modified_symbols_);
+                        manager.RemoveNodes(func_block.modified_global_symbols_);
                         break;
                     }
                 }
@@ -700,6 +844,18 @@ void Intermediate::sync_codes() {
         for (auto &code: basic_block.codes_) codes_.emplace_back(code);
         for (auto &code: basic_block.jb_codes_) codes_.emplace_back(code);
     }
+}
+
+std::pair<bool, int> Intermediate::search_func_block_by_name(std::string func_name) {
+    for (int i = 0; i < func_blocks_.size(); i++) {
+        auto &func_block = func_blocks_[i];
+        if (func_block.func_name_ == func_name) {
+            return std::make_pair(true, i);
+        } else {
+            continue;
+        }
+    }
+    return std::make_pair(false, -1);
 }
 
 std::string get_op_string(IntermOp op) {
