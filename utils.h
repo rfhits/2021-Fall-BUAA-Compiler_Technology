@@ -9,6 +9,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <set>
 
 bool is_unsigned_integer(std::string& s);
 bool is_integer(std::string &s);
@@ -20,4 +21,5 @@ std::string vec_str_to_str(const std::vector<std::string>& vec);
 int get_substr_no(const std::string& str, const std::string& sub);
 int sum(const std::vector<int>& vec_int);
 void assert(const std::string& msg);
+bool str_set_equal(std::set<std::string>& set1, std::set<std::string>& set2);
 #endif //INC_2021_FALL_BUAA_COMPILER_TECHNOLOGY_UTILS_H

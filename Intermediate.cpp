@@ -357,7 +357,9 @@ void Intermediate::Optimize() {
     divide_blocks();
     construct_flow_rel();
     add_modified_symbols();
+    add_read_symbols();
     common_expr();
+    gen_def_and_use();
     sync_codes();
 }
 
@@ -610,6 +612,18 @@ void Intermediate::divide_blocks() {
 }
 
 void Intermediate::construct_flow_rel() {
+    //
+    BasicBlock &block = basic_blocks_[0];
+    if (block.label_codes_.empty()) {
+        std::pair<bool, int> search_res = search_func_block_by_name("main");
+        FuncBlock &func_block = func_blocks_[search_res.second];
+        int main_block_id = func_block.block_ids_[0];
+        BasicBlock &main_first_block = basic_blocks_[main_block_id];
+        block.AddSucc(main_block_id);
+        main_first_block.AddPred(0);
+    }
+
+
     for (const auto &func_block: func_blocks_) {
         for (int id: func_block.block_ids_) {
             // now we have a basic block
@@ -755,11 +769,11 @@ void Intermediate::add_read_symbols() {
                     // ARR_SAVE arr_name, index, value, save the value to arr in memo
                     // read the arr_name, index and value
                 else if (code.op == IntermOp::ARR_SAVE) {
-                    if (symbol_table_.is_global_symbol(dst)) func_block.AddModifiedSymbol(dst);
-                    if (symbol_table_.is_global_symbol(src1)) func_block.AddModifiedSymbol(src1);
-                    if (symbol_table_.is_global_symbol(src2)) func_block.AddModifiedSymbol(src2);
+                    if (symbol_table_.is_global_symbol(dst)) func_block.AddReadSymbol(dst);
+                    if (symbol_table_.is_global_symbol(src1)) func_block.AddReadSymbol(src1);
+                    if (symbol_table_.is_global_symbol(src2)) func_block.AddReadSymbol(src2);
                 }
-                // ARR_LOAD value, arr_name, index
+                    // ARR_LOAD value, arr_name, index
                 else if (op == IntermOp::ARR_LOAD) {
                     if (symbol_table_.is_global_symbol(src1)) func_block.AddReadSymbol(code.src1);
                     if (symbol_table_.is_global_symbol(src2)) func_block.AddReadSymbol(code.src2);
@@ -796,7 +810,8 @@ void Intermediate::add_read_symbols() {
 //                        }
 //                    }
 
-                } else if ((op == IntermOp::PUSH_ARR || op == IntermOp::PUSH_VAL) && symbol_table_.is_global_symbol(dst)) {
+                } else if ((op == IntermOp::PUSH_ARR || op == IntermOp::PUSH_VAL) &&
+                           symbol_table_.is_global_symbol(dst)) {
                     func_block.AddReadSymbol(dst);
                 } else {
                     continue;
@@ -846,7 +861,126 @@ void Intermediate::sync_codes() {
     }
 }
 
-std::pair<bool, int> Intermediate::search_func_block_by_name(std::string func_name) {
+// @brief: for each basic block, generate its def and use set.
+void Intermediate::gen_def_and_use() {
+    for (int i = 0; i < basic_blocks_.size(); i++) {
+        BasicBlock &block = basic_blocks_[i];
+        for (int j = 0; j < block.codes_.size(); j++) {
+            IntermCode &code = block.codes_[j];
+            IntermOp op = code.op;
+            std::string dst = code.dst, src1 = code.src1, src2 = code.src2;
+            if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::ARR_LOAD) {
+                if (!src1.empty() && !is_integer(src1) && !block.ContainsDef(src1)) {
+                    block.AddToUse(src1);
+                }
+
+                if (!src2.empty() && !is_integer(src2) && !block.ContainsDef(src2)) {
+                    block.AddToUse(src2);
+                }
+
+                if (!block.ContainsUse(dst)) {
+                    block.AddToDef(dst);
+                }
+            }
+                // GETINT, INIT_ARR
+            else if ((op == IntermOp::GETINT || op == IntermOp::INIT_ARR_PTR)
+                     && !block.ContainsUse(dst)) {
+                block.AddToDef(dst);
+            }
+                // PRINT
+            else if (op == IntermOp::PRINT && src1 == "int" && !block.ContainsDef(dst)) {
+                block.AddToUse(dst);
+            }
+                // ARR_SAVE arr_name, index, value
+            else if (op == IntermOp::ARR_SAVE) {
+                if (!dst.empty() && !is_integer(dst) && !block.ContainsDef(dst)) {
+                    block.AddToUse(dst);
+                }
+
+                if (!src1.empty() && !is_integer(src1) && !block.ContainsDef(src1)) {
+                    block.AddToUse(src1);
+                }
+
+                if (!src2.empty() && !is_integer(src2) && !block.ContainsDef(src2)) {
+                    block.AddToUse(src2);
+                }
+            }
+                // PUSH
+            else if ((op == IntermOp::PUSH_VAL || op == IntermOp::PUSH_ARR)
+                     && !is_integer(dst) && !block.ContainsDef(dst)) {
+                block.AddToUse(dst);
+            }
+                // global = func(global, input)
+            else if (op == IntermOp::CALL) {
+                std::pair<bool, int> search_res = search_func_block_by_name(dst);
+                if (!search_res.first) handle_error("func " + dst + " not found while get def and use");
+                FuncBlock &callee_block = func_blocks_[search_res.second];
+                for (const std::string &read_symbol: callee_block.read_global_symbols_) {
+                    if (!block.ContainsDef(read_symbol)) {
+                        block.AddToUse(read_symbol);
+                    }
+                }
+                for (const std::string &modified_symbol: callee_block.modified_global_symbols_) {
+                    if (!block.ContainsUse(modified_symbol)) {
+                        block.AddToDef(modified_symbol);
+                    }
+                }
+
+            }
+                // RET
+            else if (op == IntermOp::RET) {
+                if (!dst.empty() && !is_integer(dst) && !block.ContainsDef(dst)) {
+                    block.AddToUse(dst);
+                }
+            } else {
+                continue;
+            }
+        }
+
+        // u need to for-each the jb code as well, especially the bne, beq
+        for (int j = 0; j < block.jb_codes_.size(); j++) {
+            IntermCode &code = block.codes_[j];
+            IntermOp op = code.op;
+            std::string dst = code.dst, src1 = code.src1, src2 = code.src2;
+            if (op == IntermOp::BNE || op == IntermOp::BEQ) {
+                if (!src1.empty() && !is_integer(src1) && !block.ContainsDef(src1)) {
+                    block.AddToUse(src1);
+                }
+
+                if (!src2.empty() && !is_integer(src2) && !block.ContainsDef(src2)) {
+                    block.AddToUse(src2);
+                }
+            } else {
+                continue;
+            }
+        }
+    }
+}
+
+// @brief: for each basic block, generate its in and out,
+//         out = U (in_succ)
+//         in = use + (out - def)
+void Intermediate::gen_in_and_out() {
+    bool set_not_change = false;
+    for (int i = 0; i < func_blocks_.size(); i++) {
+        FuncBlock& func_block = func_blocks_[i];
+        bool continue_cal_in_out = true;
+        while (continue_cal_in_out) {
+            for (int j = 0; j < func_block.block_ids_.size(); j++) {
+                BasicBlock& block = basic_blocks_[func_block.block_ids_[j]];
+                for (int succ_i: block.succ_blocks_) {
+                    // for the succ blocks, we need their in to construct our new_out
+                    block.extend_new_out(basic_blocks_[succ_i].in_);
+                }
+                block.cal_new_in();
+
+            }
+        }
+
+    }
+}
+
+std::pair<bool, int> Intermediate::search_func_block_by_name(const std::string &func_name) {
     for (int i = 0; i < func_blocks_.size(); i++) {
         auto &func_block = func_blocks_[i];
         if (func_block.func_name_ == func_name) {

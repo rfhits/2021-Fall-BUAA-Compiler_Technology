@@ -8,6 +8,7 @@
 #include <string>
 #include <set>
 #include <utility>
+#include "utils.h"
 #include "SymbolTable.h"
 
 enum class IntermOp {
@@ -147,6 +148,10 @@ public:
     std::set<int> succ_blocks_;
     std::set<std::string> def_;
     std::set<std::string> use_;
+    std::set<std::string> in_;
+    std::set<std::string> out_;
+    std::set<std::string> new_in_;
+    std::set<std::string> new_out_;
 
     std::vector<IntermCode> label_codes_;
     std::vector<IntermCode> jb_codes_; // jump and branch codes
@@ -154,6 +159,32 @@ public:
 
     explicit BasicBlock(int id) {
         this->id_ = id;
+    }
+
+    void AddToDef(std::string symbol) {
+        this->def_.insert(symbol);
+    }
+
+    void AddToUse(std::string symbol) {
+        this->use_.insert(symbol);
+    }
+
+    bool ContainsDef(std::string symbol) {
+        auto it = def_.find(symbol);
+        if (it == def_.end()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    bool ContainsUse(std::string symbol) {
+        auto it = use_.find(symbol);
+        if (it == use_.end()) {
+            return false;
+        } else {
+            return true;
+        }
     }
 
     bool IsRetBlock() {
@@ -196,6 +227,44 @@ public:
         return flag;
     }
 
+    // out = Union (in_succ)
+    void extend_new_out(std::set<std::string>& set_input) {
+        std::set_union(new_out_.begin(), new_out_.end(),
+                       set_input.begin(), set_input.end(),
+                       std::back_inserter(new_out_));
+    }
+    // in = use + (out - def)
+    void cal_new_in() {
+        // in = out - def
+        std::set_difference(new_out_.begin(), new_out_.end(),
+                            def_.begin(), def_.end(),
+                            std::back_inserter(new_in_));
+
+        // in += use
+        std::set_union(use_.begin(), use_.end(),
+                       new_in_.begin(), new_in_.end(),
+                       std::back_inserter(new_in_));
+
+    }
+
+    bool in_out_same() {
+        bool in_same = str_set_equal(in_, new_in_);
+        bool out_same = str_set_equal(out_, new_out_);
+        return in_same & out_same;
+    }
+
+    void move_new_to_origin() {
+        std::set_union(new_in_.begin(), new_in_.end(),
+                       in_.begin(), in_.end(),
+                       std::back_inserter(in_));
+
+        std::set_union(new_out_.begin(), new_out_.end(),
+                       out_.begin(), out_.end(),
+                       std::back_inserter(out_));
+    }
+
+
+
     void OutputBasicBlock(std::ofstream &out) {
         out << "---- block id: " << this->id_ << " ----" << std::endl;
         out << "pred: ";
@@ -217,6 +286,18 @@ public:
         out << "succ: ";
         for (int id: succ_blocks_) {
             out << std::to_string(id) << " ";
+        }
+
+        out << std::endl << "--------" << std::endl;
+        out << "def before use: ";
+        for (const std::string &def_sym: this->def_) {
+            out << def_sym << ", ";
+        }
+        out << std::endl;
+
+        out << "use before def: ";
+        for (const std::string &use_sym: this->use_) {
+            out << use_sym << ", ";
         }
         out << std::endl;
         out << "--------" << std::endl << std::endl;
@@ -471,8 +552,6 @@ private:
 
     void new_func_block(std::string func_name);
 
-    std::set<std::string> get_modified_symbols(std::string func_name);
-
     void divide_blocks();
 
     void construct_flow_rel();
@@ -487,7 +566,11 @@ private:
 
     void handle_error(std::string msg);
 
-    std::pair<bool, int> search_func_block_by_name(std::string func_name);
+    void gen_def_and_use();
+
+    void gen_in_and_out();
+
+    std::pair<bool, int> search_func_block_by_name(const std::string &func_name);
 
 public:
     std::vector<IntermCode> codes_;
