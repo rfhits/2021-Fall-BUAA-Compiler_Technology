@@ -354,8 +354,9 @@ void MipsGenerator::add_code(const std::string &op, const std::string &dst,
 // @brief:
 void MipsGenerator::add_code(const std::string &op, const std::string &dst, const std::string &src1) {
     std::string code;
-    if (op == "sw" || op == "lw" || op == "div" || op == "mul" || op == "move" || op == "la" ||
-        op == "not") {
+    if (op == "sw" || op == "lw" ||
+        op == "div" || op == "mul" || op == "mult" || op == "multu" ||
+        op == "move" || op == "la" || op == "li" || op == "not") {
         code = op + " " + dst + ", " + src1;
     } else {
         std::cout << "add_code doesn't support this instr op" << std::endl;
@@ -651,10 +652,23 @@ void MipsGenerator::translate() {
                     add_code("div", "$a1", src2_reg);
                     add_code("mflo", dst_reg, "", "");
                 } else if (is_integer(src2)) {
-                    // MIPS wont judge
+                    // MIPS wont judge src2 equals 0 or not, so it won't generate the label
+                    // div a b 3
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("div", dst_reg, src1_reg, src2);
+                    if (can_be_div_opt(std::stoi(src2))) {
+                        unsigned int multer, shifter;
+                        std::pair<unsigned int, unsigned int> mult_shft = get_multer_and_shifter(std::stoi(src2));
+                        multer = mult_shft.first;
+                        shifter = mult_shft.second;
+                        std::string multer_reg = "$a0";
+                        add_code("li", multer_reg, std::to_string(multer));
+                        add_code("mult", src1_reg, multer_reg);
+                        add_code("mfhi " + dst_reg);
+                        add_code("sra", dst_reg, dst_reg, std::to_string(shifter));
+                    } else {
+                        add_code("div", dst_reg, src1_reg, src2);
+                    }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
@@ -678,11 +692,35 @@ void MipsGenerator::translate() {
                     add_code("div", "$a1", src2_reg);
                     add_code("mfhi " + dst_reg);
                 } else if (is_integer(src2)) {
-                    add_code("add", "$a1", "$zero", src2);
+                    // MOD a b 3
+                    int divisor = std::stoi(src2);
+                    std::string divisor_reg = "$a0";
+                    add_code("add", divisor_reg, "$zero", src2);
+
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("div", src1_reg, "$a1");
-                    add_code("mfhi " + dst_reg);
+                    if (can_be_div_opt(divisor)) {
+                        std::string multer_reg = "$a1";
+                        std::string quotient_reg = "$a2";
+
+                        unsigned int multer, shifter;
+                        std::pair<unsigned int, unsigned int> mul_shft = get_multer_and_shifter(divisor);
+                        multer = mul_shft.first;
+                        shifter = mul_shft.second;
+                        // store res to $a2
+                        // mul $a2, $a2, 3
+                        // sub a,b , $a2
+                        add_code("add", multer_reg, "$0", std::to_string(multer));
+                        add_code("mult", src1_reg, multer_reg);
+                        add_code("mfhi " + quotient_reg);
+                        add_code("sra", quotient_reg, quotient_reg, std::to_string(shifter)); // the real quotient
+                        // now div res is in quotient_reg
+                        add_code("mul", dst_reg, quotient_reg, divisor_reg);
+                        add_code("sub", dst_reg, src1_reg, dst_reg);
+                    } else {
+                        add_code("div", src1_reg, divisor_reg);
+                        add_code("mfhi " + dst_reg);
+                    }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);

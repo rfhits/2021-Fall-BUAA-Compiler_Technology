@@ -37,7 +37,7 @@ std::string &str_trim(std::string &str) {
     return str;
 }
 
-// {1, +2, -3   }
+// {1, +2, -3}
 std::vector<int> str_to_vec_int(std::string str) {
     std::vector<int> ret_vec;
     int begin = 1;
@@ -123,7 +123,7 @@ std::string vec_str_to_str(const std::vector<std::string> &vec) {
     return str;
 }
 
-//字符串中子串出现次数
+// 字符串中子串出现次数
 int get_substr_no(const std::string &str, const std::string &sub) {
     int index = 0;    //下标
     int count = 0;    //次数
@@ -161,7 +161,7 @@ bool str_set_equal(std::set<std::string> &set1, std::set<std::string> &set2) {
 
     it = set2.begin();
     while (it != set2.end()) {
-        if (set2.find(*it) == set2.end()) {
+        if (set1.find(*it) == set1.end()) {
             return false;
         } else {
             it++;
@@ -171,6 +171,98 @@ bool str_set_equal(std::set<std::string> &set1, std::set<std::string> &set2) {
     return true;
 }
 
-void assert(const std::string &msg) {
-    std::cout << msg << std::endl;
+
+// @brief: res_set = original_set - input_set
+// @attention: if we use "&" to pass the parameter, the res_set may same as the original set or input set
+void str_set_diff(std::set<std::string> &res_set, std::set<std::string> original_set, std::set<std::string> input_set) {
+    res_set.clear();
+    res_set.insert(original_set.begin(), original_set.end());
+    for (const auto &it: input_set) {
+        res_set.erase(it);
+    }
+}
+
+// 2, 4, 8, 16, 32
+bool is_2_pow(int a) {
+    if (a < 0) return false;
+    if (__builtin_popcount(a) == 1) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// @pre: the input is 2 power
+int get_2_pow(int a) {
+    int b = 2;
+    for (int i = 1; i < 32; i++) {
+        if (a == b) {
+            return i;
+        } else {
+            b = b << 1;
+        }
+    }
+    return -1;
+}
+
+bool can_be_div_opt(int d) {
+    // if (is_2_pow(d)) return true;
+
+    if (d == 3 || d == 5 || d == 6 || d == 9 || d == 10 || d == 11 || d == 12 || d == 25 || d == 125 ||
+        d == 625) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
+// @pre: the d "can be div opt"
+std::pair<unsigned int, unsigned int> get_multer_and_shifter(int d) {
+    unsigned int multer, shifter;
+//    if (is_2_pow(d)) {
+//        multer = 0x80000001;
+//        shifter = get_2_pow(d) - 1;
+//    } else
+
+    if (d == 3) {
+        multer = 0x55555556;
+        shifter = 0;
+    } else if (d == 5) {
+        multer = 0x66666667;
+        shifter = 1;
+    } else if (d == 6) {
+        multer = 0x2AAAAAAB;
+        shifter = 0;
+    }
+
+//    else if (d == 7) {
+//        multer = 0x92492493;
+//        shifter = 2;
+//    }
+
+    else if (d == 9) {
+        multer = 0x38E38E39;
+        shifter = 1;
+    } else if (d == 10) {
+        multer = 0x66666667;
+        shifter = 2;
+    } else if (d == 11) {
+        multer = 0x2E8BA2E9;
+        shifter = 1;
+    } else if (d == 12) {
+        multer = 0x2AAAAAAB;
+        shifter = 1;
+    } else if (d == 25) {
+        multer = 0x51EB851F;
+        shifter = 3;
+    } else if (d == 125) {
+        multer = 0x10624DD3;
+        shifter = 3;
+    } else if (d == 625) {
+        multer = 0x68DB8BAD;
+        shifter = 8;
+    }
+    return std::make_pair(multer, shifter);
+
 }

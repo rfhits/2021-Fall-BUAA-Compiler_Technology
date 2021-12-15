@@ -8,7 +8,6 @@
 #include <string>
 #include <set>
 #include <utility>
-#include "utils.h"
 #include "SymbolTable.h"
 
 enum class IntermOp {
@@ -229,41 +228,29 @@ public:
 
     // out = Union (in_succ)
     void extend_new_out(std::set<std::string>& set_input) {
-        std::set_union(new_out_.begin(), new_out_.end(),
-                       set_input.begin(), set_input.end(),
-                       std::back_inserter(new_out_));
+        new_out_.insert(set_input.begin(), set_input.end());
     }
     // in = use + (out - def)
     void cal_new_in() {
-        // in = out - def
-        std::set_difference(new_out_.begin(), new_out_.end(),
-                            def_.begin(), def_.end(),
-                            std::back_inserter(new_in_));
+        // new_in = new_out - def
+        str_set_diff(new_in_, new_out_, def_);
 
-        // in += use
-        std::set_union(use_.begin(), use_.end(),
-                       new_in_.begin(), new_in_.end(),
-                       std::back_inserter(new_in_));
+        // new_in += use
+        new_in_.insert(use_.begin(), use_.end());
 
     }
 
-    bool in_out_same() {
+    bool in_out_not_change() {
         bool in_same = str_set_equal(in_, new_in_);
         bool out_same = str_set_equal(out_, new_out_);
         return in_same & out_same;
     }
 
-    void move_new_to_origin() {
-        std::set_union(new_in_.begin(), new_in_.end(),
-                       in_.begin(), in_.end(),
-                       std::back_inserter(in_));
-
-        std::set_union(new_out_.begin(), new_out_.end(),
-                       out_.begin(), out_.end(),
-                       std::back_inserter(out_));
+    // move new_in and new_out to orginal in and out
+    void sync_in_out() {
+        in_.insert(new_in_.begin(), new_in_.end());
+        out_.insert(new_out_.begin(), new_out_.end());
     }
-
-
 
     void OutputBasicBlock(std::ofstream &out) {
         out << "---- block id: " << this->id_ << " ----" << std::endl;
@@ -300,6 +287,19 @@ public:
             out << use_sym << ", ";
         }
         out << std::endl;
+
+        out << "in: ";
+        for (const std::string &in_sym: this->in_) {
+            out << in_sym << ", ";
+        }
+        out << std::endl;
+
+        out << "out: ";
+        for (const std::string &out_sym: this->out_) {
+            out << out_sym << ", ";
+        }
+        out << std::endl;
+
         out << "--------" << std::endl << std::endl;
     }
 };
@@ -353,7 +353,7 @@ public:
         this->read_global_symbols_.insert(symbol);
     }
 
-    void AddReadParam(std::string param_name) {
+    void AddReadParam(const std::string& param_name) {
         auto it = this->param_arr_name_to_order.find(param_name);
         if (it == param_arr_name_to_order.end())
             std::cerr << "can't find the param" + param_name + " in add read param" << std::endl;
@@ -449,9 +449,12 @@ public:
             // try to find a symbol in the dag,
             // if can not be found, new a node, add to table
             if (op == IntermOp::ARR_SAVE) {
+                // ARR_SAVE arr_name index value
                 int id = get_symbol_node_require_new(src2);
                 std::string re_src2 = nodes[id].GetSymbolName();
-                return {op, dst, src1, re_src2};
+                id = get_symbol_node_require_new(src1);
+                std::string re_src1 = nodes[id].GetSymbolName();
+                return {op, dst, re_src1, re_src2};
             } else {
                 // PRINT, remove %ret
                 remove_symbol("%RET");
@@ -473,12 +476,20 @@ public:
             }
 
             // read a value from io, return the original code, but change the table
-            // same as the arr_load value arr_name index
-            if (op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
+            if (op == IntermOp::GETINT) {
                 remove_symbol(dst);
                 int id = get_symbol_node_require_new(dst);
-                symbol_to_node_id[dst] = id;
+                // symbol_to_node_id[dst] = id;
                 return code;
+            }
+            // arr_load value arr_name index,
+            // index is src2
+            if (op == IntermOp::ARR_LOAD) {
+                int id = get_symbol_node_require_new(src2);
+                std::string re_src2 = nodes[id].GetSymbolName();
+                remove_symbol(dst);
+                get_symbol_node_require_new(dst);
+                return {op, dst, src1, re_src2};
             }
 
             std::pair<bool, int> search_res = find_pattern(op, src1, src2);
@@ -537,7 +548,6 @@ private:
     std::ofstream &out_;
 
     int cur_block_id_ = -1;
-//    int cur_func_block_id = -1;
 
     bool enable_inline_ = false;
     bool enable_peephole_ = true;
@@ -551,6 +561,8 @@ private:
     void new_basic_block();
 
     void new_func_block(std::string func_name);
+
+    void reset_blocks();
 
     void divide_blocks();
 
@@ -569,6 +581,8 @@ private:
     void gen_def_and_use();
 
     void gen_in_and_out();
+
+    void dead_code_elimination();
 
     std::pair<bool, int> search_func_block_by_name(const std::string &func_name);
 

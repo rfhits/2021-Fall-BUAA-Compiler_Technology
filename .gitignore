@@ -5,18 +5,11 @@ CMakeLists.txt
 
 # local test files
 testfiles
-testfile.txt
-interm.txt
-interm_opt.txt
-interm_inline.txt
-output.txt
-error.txt
-mips.txt
-temp.txt
-doc/mips1.asm
+*.txt
 *.asm
 
 # personal document
+/versions
 *.zip
 设计文档.pdf
 设计文档.md

@@ -732,6 +732,7 @@ std::pair<DataType, std::string> Parser::CallFunc() {
             // ( P )
             // already read a token
             if (first_exp.count(type_code_) != 0) {
+                // generate params, then prepare call
                 std::vector<std::pair<DataType, std::string>> param_list = FuncRParams();
                 intermediate_.AddMidCode(called_func_name, IntermOp::PREPARE_CALL, "", ""); // prepare call
                 provide_param_num = param_list.size();
