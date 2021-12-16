@@ -40,9 +40,9 @@ bool is_read_op(IntermOp op) {
 }
 
 
-bool is_write_op(IntermOp op) {
+bool op_modify_dst(IntermOp op) {
     if (is_arith(op) || is_bitwise(op) || is_cmp(op) ||
-        op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
+        op == IntermOp::GETINT || op == IntermOp::ARR_LOAD || op == IntermOp::INIT_ARR_PTR) {
         return true;
     } else {
         return false;
@@ -160,6 +160,9 @@ void Intermediate::OutputFuncBlocks(std::ofstream &out) {
     basic_blocks_[0].OutputBasicBlock(out);
     for (int i = 0; i < func_blocks_.size(); i++) {
         out << "---- Func " << func_blocks_[i].func_name_ << " Begin ----" << std::endl;
+        out << "has print: " << func_blocks_[i].has_print_ << std::endl;
+        out << "has getint: " << func_blocks_[i].has_getint_ << std::endl;
+        out << "write memo: " << func_blocks_[i].write_memo_ << std::endl;
         for (auto id: func_blocks_[i].block_ids_) {
             basic_blocks_[id].OutputBasicBlock(out);
         }
@@ -370,18 +373,18 @@ void Intermediate::Optimize() {
         construct_flow_rel();
         add_modified_symbols();
         add_read_symbols();
-        // common_expr();
+        check_print_getint_memo();
+        common_expr();
         gen_def_and_use();
         gen_in_and_out();
-        dead_code_elimination();
         if (i == 0) {
             OutputFuncBlocks(bf_dce_out);
             bf_dce_out.close();
         }
+        dead_code_elimination();
+        delete_useless_loop_in_main();
         sync_codes();
     }
-
-
 }
 
 void Intermediate::peephole_optimize() {
@@ -423,17 +426,17 @@ void Intermediate::peephole_optimize() {
         bool is_assign = ((it->op) == IntermOp::ADD) & (it->src2 == "0");
         std::string temp_name = pre_it->dst;
         bool dst_eq_src = (pre_it->dst[0] == '#') & (it->src1 == pre_it->dst);
-        auto it_check_use = it+1;
-        bool temp_wont_use = true;
-        while (it_check_use != codes_.end()) {
-            if (it_check_use->src1 == temp_name || it_check_use->src2 == temp_name) {
-                temp_wont_use = false;
-                break;
-            }
-            it_check_use++;
-        }
+//        auto it_check_use = it + 1;
+//        bool temp_wont_use = true;
+//        while (it_check_use != codes_.end()) {
+//            if (it_check_use->src1 == temp_name || it_check_use->src2 == temp_name) {
+//                temp_wont_use = false;
+//                break;
+//            }
+//            it_check_use++;
+//        }
 
-        if (is_assign && dst_eq_src && temp_wont_use) {
+        if (is_assign && dst_eq_src) {
             pre_it->dst = it->dst;
             it = codes_.erase(it);
             continue;
@@ -810,6 +813,48 @@ void Intermediate::add_read_symbols() {
     }
 }
 
+
+void Intermediate::check_print_getint_memo() {
+    for (auto &func_block: func_blocks_) {
+        std::string func_name = func_block.func_name_;
+        for (int block_id: func_block.block_ids_) {
+            BasicBlock &block = basic_blocks_[block_id];
+            for (IntermCode &code: block.codes_) {
+                if (code.op == IntermOp::PRINT) {
+                    func_block.has_print_ = true;
+
+                } else if (code.op == IntermOp::GETINT) {
+                    func_block.has_getint_ = true;
+
+                } else if (code.op == IntermOp::ARR_SAVE) {
+                    func_block.write_memo_ = true;
+                } else if (code.op == IntermOp::CALL) {
+                    std::string callee_name = code.dst;
+                    std::pair<bool, int> search_res = search_func_block_by_name(callee_name);
+                    if (!search_res.first) std::cerr << "func " + callee_name + " not found" << std::endl;
+                    FuncBlock &callee_block = func_blocks_[search_res.second];
+                    if (callee_block.has_print_) {
+                        func_block.has_print_ = true;
+                    }
+                    if (callee_block.has_getint_) {
+                        func_block.has_getint_ = true;
+                    }
+                    if (callee_block.write_memo_) {
+                        func_block.write_memo_ = true;
+                    }
+                } else {
+                    continue;
+                }
+            }
+            if (func_block.has_print_ && func_block.has_getint_) {
+                break; // next func
+            } else {
+                continue; // next block
+            }
+        }
+    }
+}
+
 void Intermediate::common_expr() {
     for (auto &basic_block: basic_blocks_) {
         int node_id = 0;
@@ -1096,6 +1141,92 @@ std::pair<bool, int> Intermediate::search_func_block_by_name(const std::string &
         }
     }
     return std::make_pair(false, -1);
+}
+
+// @brief: delete useless loop in main
+// @note: if the loop block does not modify the in of next block and
+//        this block don't print and
+//        this block don't getint,
+//        we can delete this loop block, i.e. empty the codes and jb_codes
+void Intermediate::delete_useless_loop_in_main() {
+    std::pair<bool, int> search_res = search_func_block_by_name("main");
+    FuncBlock &func_block = func_blocks_[search_res.second];
+    for (int block_id: func_block.block_ids_) {
+        BasicBlock &basic_block = basic_blocks_[block_id];
+
+        int id = basic_block.id_;
+        bool self_loop = !(basic_block.succ_blocks_.find(id) == basic_block.succ_blocks_.end());
+        if (!self_loop) continue;
+        if (basic_block.succ_blocks_.size() != 2) continue;
+        // now we can sure that it is self-loop and has a succ
+        std::vector<int> succ_ids;
+        int next_id = -1;
+        succ_ids.assign(basic_block.succ_blocks_.begin(), basic_block.succ_blocks_.end());
+        if (succ_ids[0] == id) {
+            next_id = succ_ids[1];
+        } else {
+            next_id = succ_ids[0];
+        }
+        // now we can sure it is self-loop and succ is its next
+        BasicBlock &next_block = basic_blocks_[next_id];
+        bool modified_next_in = false;
+        std::set<std::string> next_block_in = basic_blocks_[next_id].in_;
+        std::set<std::string> block_modified_symbols = {};
+        bool has_print = false, has_getint = false, write_memo = false;
+
+        for (auto &code: basic_block.codes_) {
+            std::string dst = code.dst;
+            IntermOp op = code.op;
+            if (op_modify_dst(op)) {
+                block_modified_symbols.insert(dst);
+                if (op == IntermOp::GETINT) {
+                    has_getint = true;
+                    break;
+                }
+            } else if (op == IntermOp::PRINT) {
+                has_print = true;
+                break;
+            } else if (op == IntermOp::ARR_SAVE) {
+                write_memo = true;
+                break;
+            } else if (op == IntermOp::CALL) {
+                const std::string &callee_name = dst;
+                std::pair<bool, int> search_callee_res = search_func_block_by_name(callee_name);
+                if (!search_callee_res.first)
+                    std::cerr << "func " + callee_name + " not found in delete useless loop" << std::endl;
+                FuncBlock &callee_block = func_blocks_[search_res.second];
+                block_modified_symbols.insert(callee_block.modified_global_symbols_.begin(),
+                                              callee_block.modified_global_symbols_.end());
+                if (callee_block.has_print_) {
+                    has_print = true;
+                    break;
+                }
+                if (callee_block.has_getint_) {
+                    has_getint = true;
+                    break;
+                }
+
+                if (callee_block.write_memo_) {
+                    write_memo = true;
+                    break;
+                }
+            }
+        }
+        // now we know whether this block modify and has getint and print
+        for (const std::string &symbol_next_in: next_block_in) {
+            if (block_modified_symbols.find(symbol_next_in) != block_modified_symbols.end()) {
+                modified_next_in = true;
+                break;
+            }
+        }
+        if (!has_getint && !has_print && !write_memo && !modified_next_in) {
+            std::cout << "the loop block get delete" << std::endl;
+            basic_block.codes_.clear();
+            basic_block.jb_codes_.clear();
+        }
+    }
+
+
 }
 
 std::string get_op_string(IntermOp op) {

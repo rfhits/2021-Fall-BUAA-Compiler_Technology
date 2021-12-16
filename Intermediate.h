@@ -13,7 +13,7 @@
 enum class IntermOp {
     ADD, SUB, MUL, DIV, MOD,
 
-    AND, OR, NOT, // deprecate, I thought it was used for condition, then i wrong
+    AND, OR, NOT, // deprecate, I thought it was used for condition, then I wrong
 
     EQ, NEQ, LSS, LEQ, GRE, GEQ,
 
@@ -77,11 +77,11 @@ bool is_cmp(IntermOp op);
 // especially for the arr_save op, it is read from src2
 bool is_read_op(IntermOp op);
 
-bool is_write_op(IntermOp op);
+bool op_modify_dst(IntermOp op);
 
 struct IntermCode {
     std::string dst;
-    IntermOp op;
+    IntermOp op = IntermOp::INVALID;
     std::string src1;
     std::string src2;
 
@@ -311,6 +311,9 @@ public:
     std::set<std::string> read_global_symbols_;
     std::set<int> read_param_orders = {};
     std::unordered_map<std::string, int> param_arr_name_to_order = {};
+    bool has_print_ = false;
+    bool has_getint_ = false;
+    bool write_memo_ = false;
 
     std::vector<int> block_ids_; // block id
     std::string func_name_;
@@ -464,7 +467,7 @@ public:
             }
         }
             // is written op
-        else if (is_write_op(op)) {
+        else if (op_modify_dst(op)) {
             // assign
             if (op == IntermOp::ADD && src2 == "0") {
                 remove_symbol(dst); // dst is assigned, so remove if from the table and nodes
@@ -490,6 +493,10 @@ public:
                 remove_symbol(dst);
                 get_symbol_node_require_new(dst);
                 return {op, dst, src1, re_src2};
+            }
+
+            if (op == IntermOp::INIT_ARR_PTR) {
+                return code;
             }
 
             std::pair<bool, int> search_res = find_pattern(op, src1, src2);
@@ -572,6 +579,8 @@ private:
 
     void add_read_symbols();
 
+    void check_print_getint_memo(); // check each function will print sth or not
+
     void common_expr();
 
     void sync_codes();
@@ -583,6 +592,8 @@ private:
     void gen_in_and_out();
 
     void dead_code_elimination();
+
+    void delete_useless_loop_in_main();
 
     std::pair<bool, int> search_func_block_by_name(const std::string &func_name);
 

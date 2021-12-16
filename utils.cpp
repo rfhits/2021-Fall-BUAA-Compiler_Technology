@@ -206,7 +206,11 @@ int get_2_pow(int a) {
 }
 
 bool can_be_div_opt(int d) {
-    // if (is_2_pow(d)) return true;
+    // 乘除优化开关
+//    return false;
+
+
+    if (is_2_pow(d)) return true;
 
     if (d == 3 || d == 5 || d == 6 || d == 9 || d == 10 || d == 11 || d == 12 || d == 25 || d == 125 ||
         d == 625) {
@@ -221,8 +225,8 @@ bool can_be_div_opt(int d) {
 std::pair<unsigned int, unsigned int> get_multer_and_shifter(int d) {
     unsigned int multer, shifter;
 //    if (is_2_pow(d)) {
-//        multer = 0x80000001;
-//        shifter = get_2_pow(d) - 1;
+//        multer = 1;
+//        shifter = get_2_pow(d);
 //    } else
 
     if (d == 3) {
