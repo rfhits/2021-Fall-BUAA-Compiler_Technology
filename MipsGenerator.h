@@ -51,6 +51,7 @@ public:
     const int s_regs_off = a_regs_off + 16; // =24-55
     const int t_regs_off = s_regs_off + 32; // =56-95
     const int conserved_off = t_regs_off + 40; // =96-99
+    int div_opt_times = 0;
 
 
     std::vector<std::string> reg = { // given a reg number, return its name
@@ -115,6 +116,8 @@ public:
     void add_code(const std::string &op, const std::string &dst, const std::string &src1);
 
     void add_error(const std::string &error_msg);
+
+
 
 };
 

@@ -345,6 +345,7 @@ void SymbolTable::add_error(const std::string &msg) {
 }
 
 bool SymbolTable::is_global_symbol(const std::string& sym_name) {
+    if (sym_name == "%RET") return true;
     std::pair<bool, TableEntry *> search_res = SearchSymbolInLevel("", 0, sym_name);
     if (search_res.first) return true;
     else return false;

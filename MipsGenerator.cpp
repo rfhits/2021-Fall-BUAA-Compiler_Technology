@@ -354,11 +354,13 @@ void MipsGenerator::add_code(const std::string &op, const std::string &dst,
 // @brief:
 void MipsGenerator::add_code(const std::string &op, const std::string &dst, const std::string &src1) {
     std::string code;
-    if (op == "sw" || op == "lw" || op == "div" || op == "mul" || op == "move" || op == "la" ||
-        op == "not") {
+    if (op == "sw" || op == "lw" ||
+        op == "div" || op == "mul" || op == "mult" || op == "multu" ||
+        op == "move" || op == "la" || op == "li" || op == "not" ||
+        op == "bgtz") {
         code = op + " " + dst + ", " + src1;
     } else {
-        std::cout << "add_code doesn't support this instr op" << std::endl;
+        std::cout << "add_code doesn't support op: " + op << std::endl;
     }
     if (!MIPS_DBG) {
         mips_codes_.push_back(code);
@@ -651,10 +653,42 @@ void MipsGenerator::translate() {
                     add_code("div", "$a1", src2_reg);
                     add_code("mflo", dst_reg, "", "");
                 } else if (is_integer(src2)) {
-                    // MIPS wont judge
+                    // MIPS won't judge src2 equals 0 or not, so it won't generate the label
+                    // div a b 3
+                    // div res, divend, divisor
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("div", dst_reg, src1_reg, src2);
+                    int divisor = std::stoi(src2);
+                    if (can_be_div_opt(std::stoi(src2))) {
+                        if (is_2_pow(divisor)) {
+                            int k = get_2_pow(divisor);
+                            std::string label = "correct_shiftend_" + std::to_string(div_opt_times++);
+                            add_code("add", dst_reg, src1_reg, "$0"); // if divend > 0, we use this
+                            add_code("bgtz", src1_reg, label);
+                            add_code("add", dst_reg, src1_reg, divisor);
+                            add_code("sub", dst_reg, dst_reg, 1);
+                            add_code(label + ":");
+                            add_code("sra", dst_reg, dst_reg, k);
+                        } else {
+                            unsigned int multer, shifter;
+                            std::pair<unsigned int, unsigned int> mult_shft = get_multer_and_shifter(std::stoi(src2));
+                            multer = mult_shft.first;
+                            shifter = mult_shft.second;
+                            std::string val_reg = "$a0"; // temp result
+                            std::string multer_reg = "$a1";
+
+                            add_code("li", multer_reg, std::to_string(multer));
+                            add_code("mult", src1_reg, multer_reg); // multer 乘上被除数
+                            add_code("mfhi", val_reg, "", ""); // 取高位放到临时结果
+                            if (shifter != 0)
+                                add_code("sra", val_reg, val_reg, std::to_string(shifter)); // 完成右移，离真正差符号位
+
+                            add_code("sra", dst_reg, src1_reg, "31"); // 求出符号位
+                            add_code("sub", dst_reg, val_reg, dst_reg);
+                        }
+                    } else {
+                        add_code("div", dst_reg, src1_reg, src2);
+                    }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
@@ -678,11 +712,59 @@ void MipsGenerator::translate() {
                     add_code("div", "$a1", src2_reg);
                     add_code("mfhi " + dst_reg);
                 } else if (is_integer(src2)) {
-                    add_code("add", "$a1", "$zero", src2);
+                    // MOD a b 3
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("div", src1_reg, "$a1");
-                    add_code("mfhi " + dst_reg);
+                    int divisor = std::stoi(src2);
+                    if (can_be_div_opt(divisor)) {
+                        if (is_2_pow(divisor)) {
+                            int k = get_2_pow(divisor);
+
+                            add_code("add", dst_reg, src1_reg, "$0");
+                            std::string div_ves_label = "div_opt_label_" + std::to_string(div_opt_times++);
+                            add_code("bgtz", src1_reg, div_ves_label);
+                            add_code("sub", dst_reg, "$0", src1_reg);
+                            add_code(div_ves_label + ":");
+                            //  now we can &
+                            add_code("andi", dst_reg, dst_reg, divisor-1);
+
+                            std::string res_ves_label = "div_opt_label_" + std::to_string(div_opt_times++);
+                            add_code("bgtz", src1_reg, res_ves_label);
+                            add_code("sub", dst_reg, "$0", dst_reg);
+                            add_code(res_ves_label + ":");
+                        } else {
+                            std::string divisor_reg = "$a0";
+                            std::string multer_reg = "$a1";
+                            std::string quotient_reg = "$a2";
+                            unsigned int multer, shifter;
+                            std::pair<unsigned int, unsigned int> mul_shft = get_multer_and_shifter(divisor);
+                            multer = mul_shft.first;
+                            shifter = mul_shft.second;
+                            // store res to $a2
+                            // mul $a2, $a2, 3
+                            // sub a,b , $a2
+
+                            add_code("add", divisor_reg, "$0", std::to_string(divisor));
+                            add_code("add", multer_reg, "$0", std::to_string(multer));
+                            add_code("mult", src1_reg, multer_reg);
+                            add_code("mfhi " + quotient_reg);
+                            if (shifter != 0) {
+                                add_code("sra", quotient_reg, quotient_reg,
+                                         std::to_string(shifter)); // the real quotient
+                            }
+
+                            add_code("sra", dst_reg, src1_reg, "31"); // 符号位
+                            add_code("sub", quotient_reg, quotient_reg, dst_reg); // the real res of quo
+                            // now div res is in quotient_reg
+                            add_code("mul", dst_reg, quotient_reg, divisor_reg);
+                            add_code("sub", dst_reg, src1_reg, dst_reg);
+                        }
+                    } else {
+                        std::string divisor_reg = "$a0";
+                        add_code("add", divisor_reg, "$0", divisor);
+                        add_code("div", src1_reg, divisor_reg);
+                        add_code("mfhi " + dst_reg);
+                    }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
@@ -972,6 +1054,7 @@ bool MipsGenerator::will_be_used_later(const std::string &symbol, int i) {
     // for those temp generated in the long expression like: a = b + c * d / e - f % d
     // the common may spread it to other code in the same block
     // end marks: FUNC_END, FUNC_BEGIN, Label, JUMP, BNE, BEQ
+    i += 1;
     if (i >= interm_codes_.size()) return false;
     bool will_be_used = false;
     while (i < interm_codes_.size()) {

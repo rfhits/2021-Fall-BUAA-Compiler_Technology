@@ -13,7 +13,7 @@
 enum class IntermOp {
     ADD, SUB, MUL, DIV, MOD,
 
-    AND, OR, NOT, // deprecate, I thought it was used for condition, then i wrong
+    AND, OR, NOT, // deprecate, I thought it was used for condition, then I wrong
 
     EQ, NEQ, LSS, LEQ, GRE, GEQ,
 
@@ -77,11 +77,11 @@ bool is_cmp(IntermOp op);
 // especially for the arr_save op, it is read from src2
 bool is_read_op(IntermOp op);
 
-bool is_write_op(IntermOp op) ;
+bool op_modify_dst(IntermOp op);
 
 struct IntermCode {
     std::string dst;
-    IntermOp op;
+    IntermOp op = IntermOp::INVALID;
     std::string src1;
     std::string src2;
 
@@ -147,6 +147,10 @@ public:
     std::set<int> succ_blocks_;
     std::set<std::string> def_;
     std::set<std::string> use_;
+    std::set<std::string> in_;
+    std::set<std::string> out_;
+    std::set<std::string> new_in_;
+    std::set<std::string> new_out_;
 
     std::vector<IntermCode> label_codes_;
     std::vector<IntermCode> jb_codes_; // jump and branch codes
@@ -154,6 +158,32 @@ public:
 
     explicit BasicBlock(int id) {
         this->id_ = id;
+    }
+
+    void AddToDef(std::string symbol) {
+        this->def_.insert(symbol);
+    }
+
+    void AddToUse(std::string symbol) {
+        this->use_.insert(symbol);
+    }
+
+    bool ContainsDef(std::string symbol) {
+        auto it = def_.find(symbol);
+        if (it == def_.end()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    bool ContainsUse(std::string symbol) {
+        auto it = use_.find(symbol);
+        if (it == use_.end()) {
+            return false;
+        } else {
+            return true;
+        }
     }
 
     bool IsRetBlock() {
@@ -196,6 +226,32 @@ public:
         return flag;
     }
 
+    // out = Union (in_succ)
+    void extend_new_out(std::set<std::string>& set_input) {
+        new_out_.insert(set_input.begin(), set_input.end());
+    }
+    // in = use + (out - def)
+    void cal_new_in() {
+        // new_in = new_out - def
+        str_set_diff(new_in_, new_out_, def_);
+
+        // new_in += use
+        new_in_.insert(use_.begin(), use_.end());
+
+    }
+
+    bool in_out_not_change() {
+        bool in_same = str_set_equal(in_, new_in_);
+        bool out_same = str_set_equal(out_, new_out_);
+        return in_same & out_same;
+    }
+
+    // move new_in and new_out to orginal in and out
+    void sync_in_out() {
+        in_.insert(new_in_.begin(), new_in_.end());
+        out_.insert(new_out_.begin(), new_out_.end());
+    }
+
     void OutputBasicBlock(std::ofstream &out) {
         out << "---- block id: " << this->id_ << " ----" << std::endl;
         out << "pred: ";
@@ -218,14 +274,47 @@ public:
         for (int id: succ_blocks_) {
             out << std::to_string(id) << " ";
         }
+
+        out << std::endl << "--------" << std::endl;
+        out << "def before use: ";
+        for (const std::string &def_sym: this->def_) {
+            out << def_sym << ", ";
+        }
         out << std::endl;
+
+        out << "use before def: ";
+        for (const std::string &use_sym: this->use_) {
+            out << use_sym << ", ";
+        }
+        out << std::endl;
+
+        out << "in: ";
+        for (const std::string &in_sym: this->in_) {
+            out << in_sym << ", ";
+        }
+        out << std::endl;
+
+        out << "out: ";
+        for (const std::string &out_sym: this->out_) {
+            out << out_sym << ", ";
+        }
+        out << std::endl;
+
         out << "--------" << std::endl << std::endl;
     }
 };
 
 class FuncBlock {
 public:
-    std::set<std::string> modified_symbols_;
+    std::set<std::string> modified_global_symbols_;
+    std::set<int> modified_param_orders = {};
+    std::set<std::string> read_global_symbols_;
+    std::set<int> read_param_orders = {};
+    std::unordered_map<std::string, int> param_arr_name_to_order = {};
+    bool has_print_ = false;
+    bool has_getint_ = false;
+    bool write_memo_ = false;
+
     std::vector<int> block_ids_; // block id
     std::string func_name_;
 
@@ -237,8 +326,53 @@ public:
         this->block_ids_.push_back(block_id);
     }
 
+    // @brief: add those INT_ARR param to map
+    void AddArrParam(const std::string &arr_name, int i) {
+        this->param_arr_name_to_order[arr_name] = i;
+    }
+
+    // @brief: given an array name, check whether it is the function's param
+    bool ContainsParamArr(const std::string &arr_name) {
+        auto it = this->param_arr_name_to_order.find(arr_name);
+        return it == param_arr_name_to_order.end();
+    }
+
+    // @brief: given a modified param name,
+    //         transfer into its param order and add to modified order
+    void AddModifiedParam(const std::string &name) {
+        auto it = param_arr_name_to_order.find(name);
+        if (it == param_arr_name_to_order.end()) {
+            std::cerr << "this param name can't be found" << std::endl;
+        } else {
+            this->modified_param_orders.insert(it->second);
+        }
+    }
+
     void AddModifiedSymbol(const std::string &symbol) {
-        this->modified_symbols_.insert(symbol);
+        this->modified_global_symbols_.insert(symbol);
+    }
+
+    void AddReadSymbol(const std::string &symbol) {
+        this->read_global_symbols_.insert(symbol);
+    }
+
+    void AddReadParam(const std::string& param_name) {
+        auto it = this->param_arr_name_to_order.find(param_name);
+        if (it == param_arr_name_to_order.end())
+            std::cerr << "can't find the param" + param_name + " in add read param" << std::endl;
+        else {
+            this->read_param_orders.insert(it->second);
+        }
+    }
+
+    bool ContainsModifiedSymbol(const std::string &name) {
+        auto it = this->modified_global_symbols_.find(name);
+        return it == modified_global_symbols_.end();
+    }
+
+    bool ContainsModifiedParamOrd(int ord) {
+        auto it = this->modified_param_orders.find(ord);
+        return it == modified_param_orders.end();
     }
 
 };
@@ -291,7 +425,7 @@ public:
     void RemoveNodes(std::set<std::string> &modified_symbols) {
         for (auto &symbol: modified_symbols) {
             auto it = symbol_to_node_id.find(symbol);
-            if ( it != symbol_to_node_id.end()) {
+            if (it != symbol_to_node_id.end()) {
                 nodes[it->second].RemoveSymbol(symbol);
                 symbol_to_node_id.erase(it);
                 get_symbol_node_require_new(symbol);
@@ -300,7 +434,7 @@ public:
     }
 
     // remove the symbol from the node manager
-    void remove_symbol(const std::string& symbol) {
+    void remove_symbol(const std::string &symbol) {
         auto it = symbol_to_node_id.find(symbol);
         if (it == symbol_to_node_id.end()) return;
         // really exists
@@ -318,9 +452,12 @@ public:
             // try to find a symbol in the dag,
             // if can not be found, new a node, add to table
             if (op == IntermOp::ARR_SAVE) {
+                // ARR_SAVE arr_name index value
                 int id = get_symbol_node_require_new(src2);
                 std::string re_src2 = nodes[id].GetSymbolName();
-                return {op, dst, src1, re_src2};
+                id = get_symbol_node_require_new(src1);
+                std::string re_src1 = nodes[id].GetSymbolName();
+                return {op, dst, re_src1, re_src2};
             } else {
                 // PRINT, remove %ret
                 remove_symbol("%RET");
@@ -330,7 +467,7 @@ public:
             }
         }
             // is written op
-        else if (is_write_op(op)) {
+        else if (op_modify_dst(op)) {
             // assign
             if (op == IntermOp::ADD && src2 == "0") {
                 remove_symbol(dst); // dst is assigned, so remove if from the table and nodes
@@ -342,11 +479,23 @@ public:
             }
 
             // read a value from io, return the original code, but change the table
-            // same as the arr_load value arr_name index
-            if (op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
+            if (op == IntermOp::GETINT) {
                 remove_symbol(dst);
                 int id = get_symbol_node_require_new(dst);
-                symbol_to_node_id[dst] = id;
+                // symbol_to_node_id[dst] = id;
+                return code;
+            }
+            // arr_load value arr_name index,
+            // index is src2
+            if (op == IntermOp::ARR_LOAD) {
+                int id = get_symbol_node_require_new(src2);
+                std::string re_src2 = nodes[id].GetSymbolName();
+                remove_symbol(dst);
+                get_symbol_node_require_new(dst);
+                return {op, dst, src1, re_src2};
+            }
+
+            if (op == IntermOp::INIT_ARR_PTR) {
                 return code;
             }
 
@@ -406,7 +555,6 @@ private:
     std::ofstream &out_;
 
     int cur_block_id_ = -1;
-//    int cur_func_block_id = -1;
 
     bool enable_inline_ = false;
     bool enable_peephole_ = true;
@@ -421,7 +569,7 @@ private:
 
     void new_func_block(std::string func_name);
 
-    std::set<std::string> get_modified_symbols(std::string func_name);
+    void reset_blocks();
 
     void divide_blocks();
 
@@ -429,11 +577,25 @@ private:
 
     void add_modified_symbols();
 
+    void add_read_symbols();
+
+    void check_print_getint_memo(); // check each function will print sth or not
+
     void common_expr();
 
     void sync_codes();
 
     void handle_error(std::string msg);
+
+    void gen_def_and_use();
+
+    void gen_in_and_out();
+
+    void dead_code_elimination();
+
+    void delete_useless_loop_in_main();
+
+    std::pair<bool, int> search_func_block_by_name(const std::string &func_name);
 
 public:
     std::vector<IntermCode> codes_;

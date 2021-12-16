@@ -4,12 +4,12 @@ cmake-build-debug
 CMakeLists.txt
 
 # local test files
-testfiles
-versions/
+/testfiles
 *.asm
 *.txt
 
 # personal document
+/versions
 *.zip
 设计文档.pdf
 设计文档.md
