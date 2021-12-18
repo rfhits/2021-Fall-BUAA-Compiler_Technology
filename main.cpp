@@ -33,7 +33,7 @@ int main() {
     SymbolTable symbol_table;
     Intermediate interm(symbol_table, interm_out);
     Parser parser(symbol_table, lexer, error_handler, interm, false, interm_out);
-    MipsGenerator mips_generator(symbol_table, interm.codes_, mips_out);
+    MipsGenerator mips_generator(symbol_table, interm.codes_, interm.func_blocks_, interm.basic_blocks_, mips_out);
     parser.Program();
     symbol_table.show_table();
     interm.OutputCodes(interm_out);
@@ -44,7 +44,7 @@ int main() {
     interm.OutputFuncBlocks(interm_opt_out);
     symbol_table.show_table();
 
-    mips_generator.translate();
+    mips_generator.Translate();
 
     interm_out.close();
     interm_opt_out.close();

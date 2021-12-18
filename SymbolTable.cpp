@@ -350,3 +350,15 @@ bool SymbolTable::is_global_symbol(const std::string& sym_name) {
     if (search_res.first) return true;
     else return false;
 }
+
+std::vector<std::string> SymbolTable::GetFuncParams(std::string func_name) {
+    std::pair<bool, TableEntry*> search_func_res = SearchFunc(func_name);
+    if (!search_func_res.first) add_error("can't find func "+ func_name+" in GetFuncParams");
+    int param_num = search_func_res.second->value;
+    std::vector<std::string> params;
+    for (int i = 0; i < param_num; i++) {
+        TableEntry* param_entry = GetKthParam(func_name, i);
+        params.push_back(param_entry->name);
+    }
+    return params;
+}

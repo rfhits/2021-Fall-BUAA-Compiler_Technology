@@ -39,7 +39,6 @@ bool is_read_op(IntermOp op) {
     }
 }
 
-
 bool op_modify_dst(IntermOp op) {
     if (is_arith(op) || is_bitwise(op) || is_cmp(op) ||
         op == IntermOp::GETINT || op == IntermOp::ARR_LOAD || op == IntermOp::INIT_ARR_PTR) {
@@ -48,15 +47,6 @@ bool op_modify_dst(IntermOp op) {
         return false;
     }
 }
-
-bool is_modify_op(IntermOp op) {
-    if (is_cmp(op) && is_arith(op) || is_bitwise(op) || op == IntermOp::GETINT || op == IntermOp::ARR_LOAD) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
 
 Intermediate::Intermediate(SymbolTable &symbol_table, std::ofstream &out) : symbol_table_(symbol_table), out_(out) {
 }
@@ -163,6 +153,14 @@ void Intermediate::OutputFuncBlocks(std::ofstream &out) {
         out << "has print: " << func_blocks_[i].has_print_ << std::endl;
         out << "has getint: " << func_blocks_[i].has_getint_ << std::endl;
         out << "write memo: " << func_blocks_[i].write_memo_ << std::endl;
+        out << "---- conflict graph ----" << std::endl;
+        for (auto &it: func_blocks_[i].conflict_graph_.graph) {
+            out << it.first + ": ";
+            for (const std::string &symbol: it.second) {
+                out << symbol + " ";
+            }
+            out << std::endl;
+        }
         for (auto id: func_blocks_[i].block_ids_) {
             basic_blocks_[id].OutputBasicBlock(out);
         }
@@ -385,6 +383,7 @@ void Intermediate::Optimize() {
         delete_useless_loop_in_main();
         sync_codes();
     }
+    gen_func_conflict_graph();
 }
 
 void Intermediate::peephole_optimize() {
@@ -521,7 +520,6 @@ void Intermediate::peephole_optimize() {
         it++;
     }
 
-
     // const merge, make sure that src2 is 0
     // like: add a 5 2, mul a 3 2
     it = codes_.begin();
@@ -568,6 +566,65 @@ void Intermediate::peephole_optimize() {
         if (op == IntermOp::MUL && ((src1 == "0") || (src2 == "0"))) {
             it->op = IntermOp::ADD;
             it->src1 = "0";
+            it->src2 = "0";
+        }
+        if (op == IntermOp::DIV && src1 == src2) {
+            it->op = IntermOp::ADD;
+            it->src1 = "1";
+            it->src2 = "0";
+        }
+
+        if (op == IntermOp::MOD && src1 == src2) {
+            it->op = IntermOp::ADD;
+            it->src1 = "0";
+            it->src2 = "0";
+        }
+        it++;
+    }
+
+    // swap integer order
+    // make sure add a b 2 not add a 2 b
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        IntermOp op = it->op;
+        std::string src1 = it->src1;
+        std::string src2 = it->src2;
+        if ((op == IntermOp::MUL || op == IntermOp::ADD)
+            && (is_integer(src1) && !is_integer(src2))) {
+            const std::string &tmp = src1;
+            it->src1 = it->src2;
+            it->src2 = tmp;
+        }
+        it++;
+    }
+
+    // NOT dst, src1
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        IntermOp op = it->op;
+        std::string src1 = it->src1;
+        std::string src2 = it->src2;
+        if (op == IntermOp::NOT && is_integer(src1)) {
+            int value = !(std::stoi(src1));
+            it->op = IntermOp::ADD;
+            it->src1 = std::to_string(value);
+            it->src2 = "0";
+        }
+        it++;
+    }
+
+    // cmp when src1 == src2
+    it = codes_.begin();
+    while (it != codes_.end()) {
+        IntermOp op = it->op;
+        std::string src1 = it->src1, src2 = it->src2;
+        int value = -1;
+        if (is_cmp(op) && (src1 == src2)) {
+            if (op == IntermOp::EQ || op == IntermOp::LEQ || op == IntermOp::GEQ) value = 1;
+            else value = 0;
+
+            it->op = IntermOp::ADD;
+            it->src1 = std::to_string(value);
             it->src2 = "0";
         }
         it++;
@@ -922,7 +979,8 @@ void Intermediate::gen_def_and_use() {
                 block.AddToDef(dst);
             }
                 // PRINT
-            else if (op == IntermOp::PRINT && src1 == "int" && !block.ContainsDef(dst)) {
+            else if (op == IntermOp::PRINT && !is_integer(dst) && src1 == "int"
+                     && !block.ContainsDef(dst)) {
                 block.AddToUse(dst);
             }
                 // ARR_SAVE arr_name, index, value
@@ -1014,8 +1072,16 @@ void Intermediate::gen_in_and_out() {
                 continue_cal_in_out |= in_out_change;
             }
         }
-
     }
+
+    // there is global variables
+//    if (basic_blocks_[0].label_codes_[0].op != IntermOp::FUNC_BEGIN) {
+//        std::pair<bool, int> search_res = search_func_block_by_name("main");
+//        FuncBlock& main_block = func_blocks_[search_res.second];
+//        int main_id = main_block.block_ids_[0];
+//        basic_blocks_[0].out_ = basic_blocks_[main_id].in_;
+//    }
+
 }
 
 // @note: 进行死代码删除的时候，如果一条语句**没有副作用**，而且它的赋值目标(如果有的话)不在$out_S$中，那么这条语句就可以删去
@@ -1052,7 +1118,8 @@ void Intermediate::dead_code_elimination() {
 
                 // ARR_LOAD
                 // arr_load value, arr_name, index
-                if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::ARR_LOAD) {
+                if (is_arith(op) || is_bitwise(op) || is_cmp(op) ||
+                    op == IntermOp::ARR_LOAD || op == IntermOp::INIT_ARR_PTR) {
                     if (out.find(dst) == out.end() && !symbol_table_.is_global_symbol(dst)) {
                         // erase this code
                         code_it = std::vector<IntermCode>::reverse_iterator(block.codes_.erase((++code_it).base()));
@@ -1121,9 +1188,7 @@ void Intermediate::dead_code_elimination() {
                 else if (op == IntermOp::RET) {
                     if (!dst.empty() && !is_integer(dst)) out.insert(dst);
                     code_it++;
-                }
-                    // INIT ARR, pass
-                else {
+                } else {
                     code_it++;
                 }
             }
@@ -1227,6 +1292,120 @@ void Intermediate::delete_useless_loop_in_main() {
     }
 
 
+}
+
+void Intermediate::remove_global_symbols(std::set<std::string> &s) {
+    auto it = s.begin();
+    while (it != s.end()) {
+        if (symbol_table_.is_global_symbol(*it)) {
+            it = s.erase(it);
+        } else {
+            it++;
+        }
+    }
+
+}
+
+// @brief: generate conflict graph for each function
+void Intermediate::gen_func_conflict_graph() {
+    for (FuncBlock &func_block: func_blocks_) {
+        // the conflict graph is ready
+        ConflictGraph &graph = func_block.conflict_graph_;
+        for (int block_id: func_block.block_ids_) {
+            BasicBlock &block = basic_blocks_[block_id];
+            std::set<std::string> out = block.out_;
+            remove_global_symbols(out);
+            graph.extent_by_set(out);
+
+            auto jb_it = block.jb_codes_.rbegin();
+            for (; jb_it != block.jb_codes_.rend(); jb_it++) {
+                IntermOp op = jb_it->op;
+                std::string src1 = jb_it->src1, src2 = jb_it->src2;
+                // extent the out
+                if (op == IntermOp::BNE || op == IntermOp::BEQ) {
+                    if (!src1.empty() && !is_integer(src1)) out.insert(src1);
+                    if (!src2.empty() && !is_integer(src2)) out.insert(src2);
+                    remove_global_symbols(out);
+                    graph.extent_by_set(out);
+                }
+            }
+
+            auto code_it = block.codes_.rbegin();
+            for (; code_it != block.codes_.rend();) {
+                IntermOp op = code_it->op;
+                std::string dst = code_it->dst, src1 = code_it->src1, src2 = code_it->src2;
+
+                // ARR_LOAD
+                // arr_load value, arr_name, index
+                if (is_arith(op) || is_bitwise(op) || is_cmp(op) || op == IntermOp::ARR_LOAD) {
+                    // extent the out
+                    // erase the def
+                    out.erase(dst);
+                    // involve the use
+                    if (!src1.empty() && !is_integer(src1)) out.insert(src1);
+                    if (!src2.empty() && !is_integer(src2)) out.insert(src2);
+                }
+                    // GETINT
+                else if (op == IntermOp::GETINT && !symbol_table_.is_global_symbol(dst)) {
+                    out.insert(dst);
+                    graph.extent_by_set(out);
+                }
+                    // PRINT
+                    // be care for print %RET, through %RET is change after PRINT,
+                    // we need to add %RET, out bigger won't wrong
+                else if (op == IntermOp::PRINT) {
+                    if (src1 == "int" && !dst.empty() && !is_integer(dst)) {
+                        out.insert(dst);
+                    } else {
+                        // print an integer or string, pass
+                    }
+                }
+                    // ARR_SAVE, change the memory
+                    // arr_save arr_name, index, value
+                    // the three symbols are all we need, so extent the use
+                else if (op == IntermOp::ARR_SAVE) {
+                    if (!src1.empty() && !is_integer(src1)) out.insert(src1);
+                    if (!src2.empty() && !is_integer(src2)) out.insert(src2);
+                    if (!dst.empty() && !is_integer(dst)) out.insert(dst);
+                }
+
+                    // CALL occurs, we need to consider the call block as a whole
+                    // @pre: we promise in parser that param have already been calculated, so "push" is linked
+                    // PUSH_ARR, PUSH_VAL
+                else if (op == IntermOp::CALL) {
+                    std::pair<bool, int> search_res = search_func_block_by_name(dst);
+                    if (!search_res.first) std::cerr << "CALL func not found in construct conflict graph" << std::endl;
+                    FuncBlock &callee_block = func_blocks_[search_res.second];
+                    out.insert(callee_block.read_global_symbols_.begin(),
+                               callee_block.read_global_symbols_.end());
+                    // read the PUSH_VAL and PUSH_ARR
+                    code_it++;
+                    while (code_it->op != IntermOp::PREPARE_CALL) {
+                        std::string push_dst = code_it->dst;
+                        if (code_it->op == IntermOp::PUSH_VAL || code_it->op == IntermOp::PUSH_ARR) {
+                            if (!dst.empty() && !is_integer(push_dst)) out.insert(push_dst);
+                            code_it++;
+                        }
+                    }
+                    // now op == prepare call
+                    // remove the func change symbols from out
+                    str_set_diff(out, out, callee_block.modified_global_symbols_);
+                }
+                    // RET, we can't delete return statement
+                else if (op == IntermOp::RET) {
+                    if (!dst.empty() && !is_integer(dst)) out.insert(dst);
+                }
+                    // INIT_ARR_PTR, pass
+                    // @pre: we promise if an array_init, i will be used after that
+                else {
+                    out.erase(dst);
+                }
+                remove_global_symbols(out);
+                graph.extent_by_set(out);
+                code_it++;
+            }
+        }
+    }
 }
 
 std::string get_op_string(IntermOp op) {

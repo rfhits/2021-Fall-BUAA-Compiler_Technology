@@ -10,18 +10,21 @@
 #include "Intermediate.h"
 
 const std::unordered_map<IntermOp, std::string> interm_op_to_instr = {
-        {IntermOp::EQ,"seq"},
-        {IntermOp::NEQ,"sne"},
-        {IntermOp::LSS,"slt"},
-        {IntermOp::LEQ,"sle"},
-        {IntermOp::GRE,"sgt"},
-        {IntermOp::GEQ,"sge"},
+        {IntermOp::EQ,  "seq"},
+        {IntermOp::NEQ, "sne"},
+        {IntermOp::LSS, "slt"},
+        {IntermOp::LEQ, "sle"},
+        {IntermOp::GRE, "sgt"},
+        {IntermOp::GEQ, "sge"},
 };
 
 class MipsGenerator {
 private:
-    SymbolTable& symbol_table_;
-    std::vector<IntermCode>& interm_codes_;
+    SymbolTable &symbol_table_;
+    std::vector<IntermCode> &interm_codes_;
+    std::vector<FuncBlock> &func_blocks_;
+    std::vector<BasicBlock> &basic_blocks_;
+
     std::vector<std::string> mips_codes_;
     std::ofstream &out_;
     std::string cur_func_name_; // in which function label
@@ -34,7 +37,7 @@ private:
     std::vector<int> saved_s_order_{};
 
     std::vector<std::string> t_regs_table_ = {"", "", "", "", "", "", "", "", "", ""};
-    std::vector<int> t_order_= {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<int> t_order_ = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<std::string> saved_t_regs_table_{};
     std::vector<int> saved_t_order{};
 
@@ -65,19 +68,37 @@ public:
             "$gp", "$sp", "$fp", "$ra"
     };
 
-    MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> &interm_codes, std::ofstream &out);
+    std::vector<std::string> reg_pool_ = { // given a reg number, return its name
+            "$t0", "$t1", "$t2", "$t3",
+            "$t4", "$t5", "$t6", "$t7",
+            "$s0", "$s1", "$s2", "$s3",
+            "$s4", "$s5", "$s6", "$s7",
+            "$t8", "$t9"
+    };
 
-    bool will_be_used_later(const std::string& symbol, int i);
 
-    void translate();
+    MipsGenerator(SymbolTable &symbol_table,
+                  std::vector<IntermCode> &interm_codes,
+                  std::vector<FuncBlock> &func_blocks,
+                  std::vector<BasicBlock> &basic_blocks, std::ofstream &out);
+
+    bool will_be_used_later(const std::string &symbol, int i);
+
+    std::pair<bool, int> search_func_block_by_name(const std::string &func_name);
+
+    std::pair<bool, int> search_symbol_reg(std::string symbol);
+
+    void Translate();
+
+    void translate_func();
 
     void remove_from_reg(std::string reg_name);
 
-    std::pair<bool, std::string> search_in_st_regs(const std::string& symbol);
+    std::pair<bool, std::string> search_in_st_regs(const std::string &symbol);
 
-    void save_to_memo(const std::string& table_name, const std::string& symbol);
+    void save_to_memo(const std::string &table_name, const std::string &symbol);
 
-    void remove_from_reg_save_to_memo(const std::string& table_name, const std::string& symbol);
+    void remove_from_reg_save_to_memo(const std::string &table_name, const std::string &symbol);
 
     std::string get_empty_s_reg();
 
@@ -85,25 +106,35 @@ public:
 
     std::string assign_t_reg(std::string symbol);
 
-    std::string assign_s_reg_require_load_from_memo(const std::string& symbol);
+    std::string assign_s_reg_require_load_from_memo(const std::string &symbol);
 
-    std::string assign_s_reg_without_load_from_memo(const std::string& symbol);
+    std::string assign_s_reg_without_load_from_memo(const std::string &symbol);
 
     std::string get_reg_require_load_from_memo(std::string symbol);
 
     std::string get_reg_without_load_from_memo(std::string symbol);
 
-    void save_symbol_to_the_reg(std::string symbol, const std::string& reg_name);
+    void save_symbol_to_the_reg(std::string symbol, const std::string &reg_name);
 
-    std::pair<int, std::string> get_memo_addr(const std::string& symbol);
+    std::pair<int, std::string> get_memo_addr(const std::string &symbol);
+
+    std::pair<int, std::string> search_in_func_reg(const std::string &symbol);
+
+    std::pair<int, std::string> get_running_addr(std::string symbol);
 
     void remove_s_regs_save_to_memo();
 
     void remove_t_regs_save_to_memo();
 
-    std::string assign_reg_require_load_from_memo(const std::string& symbol);
+    std::string assign_reg_require_load_from_memo(const std::string &symbol);
 
     std::string assign_reg_without_load_from_memo(std::string symbol);
+
+    void color_func_graph();
+
+    std::string get_reg_with_fail_load(std::string symbol, const std::string& back_reg_name);
+
+    std::string get_reg_without_fail_load(std::string symbol, const std::string& back_reg_name);
 
     void add_code(const std::string &code);
 
@@ -116,8 +147,6 @@ public:
     void add_code(const std::string &op, const std::string &dst, const std::string &src1);
 
     void add_error(const std::string &error_msg);
-
-
 
 };
 

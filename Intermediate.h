@@ -8,6 +8,7 @@
 #include <string>
 #include <set>
 #include <utility>
+#include <limits.h>
 #include "SymbolTable.h"
 
 enum class IntermOp {
@@ -95,6 +96,178 @@ std::string interm_code_to_string(const IntermCode &code, bool auto_indent);
 
 std::string get_op_string(IntermOp op);
 
+
+class ConflictGraph {
+public:
+    std::unordered_map<std::string, std::set<std::string>> graph;
+    std::unordered_map<std::string, std::set<std::string>> copy_graph;
+    int reg_num_ = -1;
+    std::vector<std::pair<std::string, int>> symbol_reg_pairs;
+
+    void extent_by_set(const std::set<std::string> &out) {
+        for (const std::string &symbol: out) {
+            std::set<std::string> symbol_conflict = out; // copy
+            symbol_conflict.erase(symbol);
+            // if graph has this symbol, extent its conflict set
+            // else set this as its conflict set
+            auto it = graph.find(symbol);
+            if (it == graph.end()) {
+                graph[symbol] = symbol_conflict;
+            } else {
+                graph[symbol].insert(symbol_conflict.begin(), symbol_conflict.end());
+            }
+        }
+    }
+
+    // @brief: given a symbol, get its reg_id
+    // @exception: may not find this symbol
+    // @retval: if found
+    std::pair<bool, int> SearchSymbolReg(const std::string &symbol) {
+        for (const std::pair<std::string, int>& symbol_reg: symbol_reg_pairs) {
+            if (symbol_reg.first == symbol) {
+                return std::make_pair(true, symbol_reg.second);
+            } else {
+                continue;
+            }
+        }
+        return std::make_pair(false, -2);
+    }
+
+    // @pre: the copy_graph's size > 1
+    // @brief: get the min degree symbol and its degree from copy_graph
+    std::pair<std::string, int> get_min_degree_symbol() {
+        std::string symbol;
+        int min_degree = 2147483647;
+        auto it = copy_graph.begin();
+        while (it != graph.end()) {
+            if (it->second.size() < min_degree) {
+                min_degree = it->second.size();
+                symbol = it->first;
+            }
+            it++;
+        }
+        return std::make_pair(symbol, min_degree);
+    }
+
+
+    void remove_from_copy_graph(std::string symbol) {
+        copy_graph.erase(symbol);
+        auto it = copy_graph.begin();
+        while (it != copy_graph.end()) {
+            if (it->second.find(symbol) != it->second.end()) {
+                it->second.erase(symbol);
+            }
+            it++;
+        }
+    }
+
+    // @pre: the symbol not in copy_graph
+    // @brief: add a symbol to the cutted copy graph
+
+    void add_symbol_to_copy_graph(std::string symbol) {
+        std::set<std::string> link_symbols = graph[symbol];
+        if (copy_graph.find(symbol) != copy_graph.end()) {
+            std::cerr << "add an already exist symbol " + symbol + " to copy graph" << std::endl;
+        }
+        copy_graph[symbol] = {};
+        for (std::string link_symbol: link_symbols) {
+            if (copy_graph.find(link_symbol) != copy_graph.end()) {
+                copy_graph[link_symbol].insert(symbol);
+                copy_graph[symbol].insert(link_symbol);
+            }
+        }
+    }
+
+    // Color symbol in copy_graph
+    // @pre: pair.second == -2
+    void color_symbol(std::string symbol) {
+        auto it = copy_graph.find(symbol);
+        if (it == copy_graph.end()) {
+            std::cerr << "can't find symbol " + symbol + " in copy_graph";
+        }
+        std::set<int> free_regs;
+        for (int i = 0; i < reg_num_; i++) free_regs.insert(i);
+
+        for (const std::string &link_symbol: it->second) {
+            // get symbol_reg_pair
+            for (const auto &symbol_reg_pair: symbol_reg_pairs) {
+                if (symbol_reg_pair.first == link_symbol) {
+                    free_regs.erase(symbol_reg_pair.second);
+                }
+            }
+        }
+        if (free_regs.empty()) std::cerr << "no reg can assign" << std::endl;
+        int assign_reg = *free_regs.begin();
+        for (auto &symbol_reg_pair: symbol_reg_pairs) {
+            if (symbol_reg_pair.first == symbol) {
+                symbol_reg_pair.second = assign_reg;
+                break;
+            }
+        }
+    }
+
+    // @brief: given the reg number,
+    //         save each symbol, reg_no
+    // @note:
+    // 1.	找到第一个连接边数目小于 K 的结点，将它从图 G 中移走，形成图G’
+    // 2.	重复步骤 1 ，直到无法再移走结点，现在，图中每个顶点的度数都大于等于Ｋ
+    // 3.	在图中选取“适当”的结点，将它记录为“不分配全局寄存器”的结点，并从图中移走
+    // 4.	重复步骤 1~ 步骤 3 ，直到图中仅剩余 1 个结点
+    // 5.	给剩余的最后一个结点选取一种颜色，然后按照结点被移走的顺序，反向将结点和边添加进去，并依次给新加入的结点选取颜色。
+    //      （保证有链接边的结点着不同的颜色）
+    void Color(int reg_num) {
+        this->reg_num_ = reg_num;
+        copy_graph = graph;
+        // -1: save to memo, never Color
+        // -2: waiting for coloring
+        while (copy_graph.size() > 1) {
+            std::pair<std::string, int> symbol_degree = get_min_degree_symbol();
+            int sign_reg_id = -2;
+            if (symbol_degree.second >= reg_num) {
+                // stay in memory
+                sign_reg_id = -1;
+            } else {
+                // the degree is small, so we can assign
+                sign_reg_id = -2;
+            }
+            symbol_reg_pairs.emplace_back(symbol_degree.first, sign_reg_id);
+            // remove from the copy graph
+            remove_from_copy_graph(symbol_degree.first);
+        }
+        if (copy_graph.size() != 1) return; // no symbols
+
+        // now there is only one symbol in the graph
+        symbol_reg_pairs.emplace_back(copy_graph.begin()->first, 0);
+        // reverse add
+        auto it = symbol_reg_pairs.rbegin();
+        it++;
+        while (it != symbol_reg_pairs.rend()) {
+            // waiting for assign
+            if (it->second == -2) {
+                add_symbol_to_copy_graph(it->first);
+                color_symbol(it->first);
+            }
+                // stay in memo, never assign
+            else {
+                add_symbol_to_copy_graph(it->first);
+            }
+            it++;
+        }
+    }
+
+    std::vector<int> GetUsedRegs() {
+        std::vector<int> used_regs = {};
+        for (const auto& symbol_reg: symbol_reg_pairs) {
+            if (symbol_reg.second != -1) {
+                used_regs.push_back(symbol_reg.second);
+            }
+        }
+        std::sort(used_regs.begin(), used_regs.end());
+        auto it = std::unique(used_regs.begin(), used_regs.end());
+        used_regs.erase(it, used_regs.end());
+        return used_regs;
+    }
+};
 
 class DAGNode {
 public:
@@ -227,9 +400,10 @@ public:
     }
 
     // out = Union (in_succ)
-    void extend_new_out(std::set<std::string>& set_input) {
+    void extend_new_out(std::set<std::string> &set_input) {
         new_out_.insert(set_input.begin(), set_input.end());
     }
+
     // in = use + (out - def)
     void cal_new_in() {
         // new_in = new_out - def
@@ -318,6 +492,8 @@ public:
     std::vector<int> block_ids_; // block id
     std::string func_name_;
 
+    ConflictGraph conflict_graph_;
+
     explicit FuncBlock(std::string func_name) {
         this->func_name_ = std::move(func_name);
     }
@@ -356,23 +532,19 @@ public:
         this->read_global_symbols_.insert(symbol);
     }
 
-    void AddReadParam(const std::string& param_name) {
-        auto it = this->param_arr_name_to_order.find(param_name);
-        if (it == param_arr_name_to_order.end())
-            std::cerr << "can't find the param" + param_name + " in add read param" << std::endl;
-        else {
-            this->read_param_orders.insert(it->second);
-        }
-    }
-
     bool ContainsModifiedSymbol(const std::string &name) {
         auto it = this->modified_global_symbols_.find(name);
         return it == modified_global_symbols_.end();
     }
 
-    bool ContainsModifiedParamOrd(int ord) {
-        auto it = this->modified_param_orders.find(ord);
-        return it == modified_param_orders.end();
+    // @brief: given a local symbol, return its reg no
+    std::pair<bool, int> SearchSymbolReg(std::string symbol) {
+        std::pair<bool, int> search_res = conflict_graph_.SearchSymbolReg(symbol);
+        return search_res ;
+    }
+
+    std::vector<int> GetUsedRegs() {
+        return conflict_graph_.GetUsedRegs();
     }
 
 };
@@ -594,6 +766,10 @@ private:
     void dead_code_elimination();
 
     void delete_useless_loop_in_main();
+
+    void gen_func_conflict_graph();
+
+    void remove_global_symbols(std::set<std::string> &s);
 
     std::pair<bool, int> search_func_block_by_name(const std::string &func_name);
 

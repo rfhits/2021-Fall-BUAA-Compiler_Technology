@@ -4,10 +4,15 @@
 
 #include "MipsGenerator.h"
 
+#include <utility>
+
 #define MIPS_DBG true
 
-MipsGenerator::MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> &interm_codes, std::ofstream &out) :
-        symbol_table_(symbol_table), interm_codes_(interm_codes), out_(out) {
+MipsGenerator::MipsGenerator(SymbolTable &symbol_table, std::vector<IntermCode> &interm_codes,
+                             std::vector<FuncBlock> &func_blocks, std::vector<BasicBlock> &basic_blocks,
+                             std::ofstream &out) :
+        symbol_table_(symbol_table), interm_codes_(interm_codes), func_blocks_(func_blocks),
+        basic_blocks_(basic_blocks), out_(out) {
 
 }
 
@@ -89,6 +94,61 @@ std::pair<int, std::string> MipsGenerator::get_memo_addr(const std::string &symb
         }
     }
 }
+
+// @brief: given a symbol name, check in current function assigned regs,
+//         if not, load to the back_reg, then return the reg
+//          this function is called when trying to read some symbol
+std::string MipsGenerator::get_reg_with_fail_load(std::string symbol, const std::string &back_reg_name) {
+    std::pair<int, std::string> search_res = get_running_addr(std::move(symbol));
+    if (search_res.first == -1) {
+        return search_res.second;
+    } else {
+        add_code("lw", back_reg_name, search_res.first, search_res.second);
+        return back_reg_name;
+    }
+}
+
+// @brief: given a symbol name, check in current function assigned regs,
+//         if not, return the back_reg_name
+std::string MipsGenerator::get_reg_without_fail_load(std::string symbol, const std::string &back_reg_name) {
+    std::pair<int, std::string> search_res = get_running_addr(std::move(symbol));
+    if (search_res.first == -1) {
+        return search_res.second;
+    } else {
+        return back_reg_name;
+    }
+}
+
+
+// this function is called when executing a function
+// we wont call this function when init the global variables
+//@retval: if in stack, return <offset, $sp> or <offset, $gp>
+//         if in reg, return <-1, reg_name>
+std::pair<int, std::string> MipsGenerator::get_running_addr(std::string symbol) {
+    if (symbol == "%RET") return std::make_pair(-1, "$v0");
+
+    if (symbol_table_.is_global_symbol(symbol)) {
+        return get_memo_addr(symbol);
+    } else {
+        // local variable
+        // 1. search in the func conflict graph
+        // 2. if the result is -1, means stay in memory, then use get_memo_addr
+        std::pair<bool, int> search_func_res = search_func_block_by_name(cur_func_name_);
+        if (!search_func_res.first) add_error("func not found");
+        FuncBlock &funcBlock = func_blocks_[search_func_res.second];
+        std::pair<bool, int> search_reg_res = funcBlock.SearchSymbolReg(symbol);
+        if (!search_reg_res.first) {
+            add_error(symbol + " not found in reg when get_running_addr");
+        }
+        if (search_func_res.second == -1) {
+            return get_memo_addr(symbol);
+        } else {
+            return std::make_pair(-1, reg_pool_[search_reg_res.second]);
+        }
+
+    }
+}
+
 
 // @brief: copy the reg value to memory,
 //         only generates the MIPS code, not change the order and table
@@ -389,10 +449,26 @@ void MipsGenerator::add_code(const std::string op, const std::string &reg_name, 
     }
 }
 
+// @brief: Color the conflict graph in the func_block
+void MipsGenerator::color_func_graph() {
+    for (FuncBlock &func_block: func_blocks_) {
+        func_block.conflict_graph_.Color(reg_pool_.size());
+        // output the Color
+        ConflictGraph &graph = func_block.conflict_graph_;
+        std::cout << func_block.func_name_ << std::endl;
+        for (auto &symbol_reg_pair: graph.symbol_reg_pairs) {
+            std::cout << symbol_reg_pair.first << ": " << symbol_reg_pair.second << std::endl;
+        }
+        std::cout << "----" << std::endl;
+    }
+}
 
-void MipsGenerator::translate() {
+void MipsGenerator::Translate() {
+
+    color_func_graph();
+
     // use the global table in symbol table to assign memory in .data or in $gp
-    bool init_main = false;
+
     add_code(".data");
     for (int i = 0; i < symbol_table_.strcons_.size(); i++) {
         std::string code = tab;
@@ -401,161 +477,21 @@ void MipsGenerator::translate() {
         add_code(code);
     }
     add_code(".text");
+
     for (int i = 0; i < interm_codes_.size(); i++) {
         IntermCode &i_code = interm_codes_[i];
         add_code("");
         add_code("# " + interm_code_to_string(i_code, false));
         IntermOp op = i_code.op;
         std::string dst = i_code.dst, src1 = i_code.src1, src2 = i_code.src2;
-        if (op == IntermOp::PREPARE_CALL) {
-            // sp minus (context and func size), it's denoted "frame size"
-            // then save the context: ra, sp, s_res, t_res
-            callee_name_stack_.push_back(cur_callee_name_);
-            cur_callee_name_ = dst;
-            int func_stack_size = symbol_table_.GetFuncStackSize(dst);
-            int frame_size = context_size + func_stack_size;
-            frame_size_stack_.push_back(frame_size);
-            add_code("sub $sp, $sp, " + std::to_string(frame_size));
-        }
-            // PUSH_ARR
-        else if (op == IntermOp::PUSH_ARR) {
-            // e.g. PUSH_ARR @Tmp_12 4
-            // MIPS:
-            //     add $a0 $sp|$gp off
-            //     sw $a0 param_off($sp)
-
-            std::string dst_reg = get_reg_require_load_from_memo(dst);
-            int param_off = std::stoi(src1) * 4;
-            add_code("sw", dst_reg, param_off, "$sp");
-        }
-            // PUSH_VAL
-        else if (op == IntermOp::PUSH_VAL) {
-            // number or symbol? reg or memory? global or local?
-            int param_off = std::stoi(src1) * 4;
-            if (is_integer(dst)) {
-                // PUSH_VAL 1 1
-                //      add $a0 1 $0
-                //      sw $a0 param_off($sp)
-                add_code("add", "$a0", "$zero", dst);
-                add_code("sw", "$a0", param_off, "$sp");
-            }
-                // VAL is symbol
-            else {
-                std::pair<bool, std::string> reg_search_res = search_in_st_regs(dst);
-                if (reg_search_res.first) {
-                    // sw reg_name param_off($sp)
-                    add_code("sw", reg_search_res.second, param_off, "$sp");
-                    if (dst[0] == '#' && !will_be_used_later(dst, i)) remove_from_reg(reg_search_res.second);
-                } else { // in memory, direct load to $a0
-                    std::pair<bool, TableEntry *> table_search_res =
-                            symbol_table_.SearchNearestSymbolNotFunc(cur_func_name_, dst);
-                    if (!table_search_res.first) add_error("param can't be found in symbol table");
-                    std::pair<int, std::string> memo_addr = get_memo_addr(dst);
-                    add_code("lw", "$a0", memo_addr.first, memo_addr.second);
-                    add_code("sw", "$a0", 4 * std::stoi(src1), "$sp");
-                }
-            }
-        }
-            // CALL FOO
-        else if (op == IntermOp::CALL) {
-            // move the global symbols to memo to avoid the change by callee
-            for (int i = 0; i < s_regs_table_.size(); i++) {
-                if (symbol_table_.is_global_symbol(s_regs_table_[i])) {
-                    remove_from_reg_save_to_memo("s", s_regs_table_[i]);
-                }
-            }
-
-            // we don't save sp into the context, we use the frame_size to remember how much to return
-            int func_stack_size = symbol_table_.GetFuncStackSize(dst);
-            add_code("sw $ra, " + std::to_string(ra_off + func_stack_size) + "($sp)");
-            std::vector<int> saved_s_reg_no = {};
-            std::vector<int> saved_t_reg_no = {};
-            for (int i = 0; i < 8; i++) {
-                if (!s_regs_table_[i].empty()) {
-                    saved_s_reg_no.push_back(i);
-                    add_code("sw", "$s" + std::to_string(i), func_stack_size + s_regs_off + 4 * i, "$sp");
-                }
-            }
-            for (int i = 0; i < 10; i++) {
-                if (!t_regs_table_[i].empty()) {
-                    saved_t_reg_no.push_back(i);
-                    add_code("sw", "$t" + std::to_string(i), func_stack_size + t_regs_off + 4 * i, "$sp");
-                }
-            }
-            add_code("jal " + dst);
-            add_code("lw", "$ra", ra_off + func_stack_size, "$sp");
-            for (int i: saved_s_reg_no) {
-                add_code("lw", "$s" + std::to_string(i), func_stack_size + s_regs_off + 4 * i, "$sp");
-            }
-            for (int i: saved_t_reg_no) {
-                add_code("lw", "$t" + std::to_string(i), func_stack_size + t_regs_off + 4 * i, "$sp");
-            }
-            add_code("add", "$sp", "$sp", *(frame_size_stack_.end() - 1));
-            frame_size_stack_.pop_back();
-            if (!callee_name_stack_.empty()) {
-                cur_callee_name_ = callee_name_stack_.back();
-                callee_name_stack_.pop_back();
-            }
-        }
-            // FUNC_BEGIN
-            // clear s_regs
-            // store params into s_regs
-            // do not care t_regs
-        else if (op == IntermOp::FUNC_BEGIN) {
-            if (!init_main) { // save a stack for main function
-                add_code("addi $sp, $sp, -" + std::to_string(symbol_table_.GetFuncStackSize("main")));
-                add_code("j main");
-                init_main = true;
-            }
-            cur_func_name_ = dst;
-            add_code(dst + " :");
-            if (cur_func_name_ != "main") {
-                // the non-main function's view of the s-t regs are empty,
-                // so save the current regs table and order until main function is called
-                saved_s_order_ = s_order_;
-                saved_s_regs_table_ = s_regs_table_;
-                saved_t_order = t_order_;
-                saved_t_regs_table_ = t_regs_table_;
-                for (int i = 0; i < s_regs_table_.size(); i++) {
-                    s_regs_table_[i] = "";
-                    s_order_[i] = i;
-                }
-            }
-        }
-            // RET
-        else if (op == IntermOp::RET) {
-            // move the global regs to memo
-            for (int i = 0; i < s_regs_table_.size(); i++) {
-                if (symbol_table_.is_global_symbol(s_regs_table_[i])) {
-                    remove_from_reg_save_to_memo("s", s_regs_table_[i]);
-                }
-            }
-
-            if (!dst.empty()) {
-                save_symbol_to_the_reg(dst, "$v0");
-            }
-            if (cur_func_name_ == "main") {
-                add_code("li $v0, 10");
-                add_code("syscall");
-            } else {
-                add_code("jr $ra");
-            }
-        }
-            // FUNC_END
-        else if (op == IntermOp::FUNC_END) {
-            if (cur_func_name_ != "main") {
-                // move the global regs to memo
-                for (int i = 0; i < s_regs_table_.size(); i++) {
-                    if (symbol_table_.is_global_symbol(s_regs_table_[i])) {
-                        remove_from_reg_save_to_memo("s", s_regs_table_[i]);
-                    }
-                }
-                add_code("jr $ra");
-            }
-            s_regs_table_ = saved_s_regs_table_;
-            s_order_ = saved_s_order_;
-            t_order_ = saved_t_order;
-            t_regs_table_ = saved_t_regs_table_;
+        // FUNC_BEGIN
+        // clear s_regs
+        // store params into s_regs
+        // do not care t_regs
+        if (op == IntermOp::FUNC_BEGIN) {
+            add_code("# the first function definition, may store the global variables");
+            translate_func();
+            return;
         }
             // add sub mul div
         else if (is_arith(op)) {
@@ -659,14 +595,16 @@ void MipsGenerator::translate() {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
                     int divisor = std::stoi(src2);
-                    if (can_be_div_opt(std::stoi(src2))) {
+                    if (can_be_div_opt(divisor)) {
                         if (is_2_pow(divisor)) {
                             int k = get_2_pow(divisor);
+                            // dst = src1
+                            // if src1 < 0 dst = src1 + (divisor -1) # 为负数，需要加上偏移量
+                            // dst >> k
                             std::string label = "correct_shiftend_" + std::to_string(div_opt_times++);
                             add_code("add", dst_reg, src1_reg, "$0"); // if divend > 0, we use this
                             add_code("bgtz", src1_reg, label);
-                            add_code("add", dst_reg, src1_reg, divisor);
-                            add_code("sub", dst_reg, dst_reg, 1);
+                            add_code("add", dst_reg, src1_reg, divisor - 1);
                             add_code(label + ":");
                             add_code("sra", dst_reg, dst_reg, k);
                         } else {
@@ -676,7 +614,11 @@ void MipsGenerator::translate() {
                             shifter = mult_shft.second;
                             std::string val_reg = "$a0"; // temp result
                             std::string multer_reg = "$a1";
-
+                            // a1 = multer
+                            // HI, LO = mult src1, multer
+                            // a0 = HI, a0 >> shifter # a0还差符号位就是答案
+                            // dst = src1 >> 31 # sign_bit is in dst
+                            // dst = a0 - dst
                             add_code("li", multer_reg, std::to_string(multer));
                             add_code("mult", src1_reg, multer_reg); // multer 乘上被除数
                             add_code("mfhi", val_reg, "", ""); // 取高位放到临时结果
@@ -719,31 +661,46 @@ void MipsGenerator::translate() {
                     if (can_be_div_opt(divisor)) {
                         if (is_2_pow(divisor)) {
                             int k = get_2_pow(divisor);
-
+                            std::string src1_copy = "$a0";
+                            // a0做符号位，防止 dst_reg == src1_reg
+                            // a0 = src1, copy src1
+                            // dst = src1
+                            // if a0 < 0, dst = -src1
+                            // dst = dst & (divisor -1)
+                            // if a0 < 0, dst = -dst
+                            add_code("add", src1_copy, src1_reg, "$0");
                             add_code("add", dst_reg, src1_reg, "$0");
                             std::string div_ves_label = "div_opt_label_" + std::to_string(div_opt_times++);
                             add_code("bgtz", src1_reg, div_ves_label);
                             add_code("sub", dst_reg, "$0", src1_reg);
                             add_code(div_ves_label + ":");
                             //  now we can &
-                            add_code("andi", dst_reg, dst_reg, divisor-1);
+                            add_code("andi", dst_reg, dst_reg, divisor - 1);
 
                             std::string res_ves_label = "div_opt_label_" + std::to_string(div_opt_times++);
-                            add_code("bgtz", src1_reg, res_ves_label);
+                            add_code("bgtz", src1_copy, res_ves_label);
                             add_code("sub", dst_reg, "$0", dst_reg);
                             add_code(res_ves_label + ":");
                         } else {
+                            // 小心dst 和 src1 被分配到相同的寄存器
                             std::string divisor_reg = "$a0";
                             std::string multer_reg = "$a1";
                             std::string quotient_reg = "$a2";
+                            std::string sign_reg = "$a3";
                             unsigned int multer, shifter;
                             std::pair<unsigned int, unsigned int> mul_shft = get_multer_and_shifter(divisor);
                             multer = mul_shft.first;
                             shifter = mul_shft.second;
-                            // store res to $a2
-                            // mul $a2, $a2, 3
+                            // a2 = divisor
+                            // a1 = multer
+                            // HI, LO = src1 * a1
+                            // a2 = HI
+                            // sra a2, a2, shifter
+                            // a3 = sign(src1)
+                            // a2 = a2 - a3
+                            // # now, src1 and dst never change, divisor reg(a0) is useless
+                            // mul $a0, $a0, a2
                             // sub a,b , $a2
-
                             add_code("add", divisor_reg, "$0", std::to_string(divisor));
                             add_code("add", multer_reg, "$0", std::to_string(multer));
                             add_code("mult", src1_reg, multer_reg);
@@ -753,13 +710,15 @@ void MipsGenerator::translate() {
                                          std::to_string(shifter)); // the real quotient
                             }
 
-                            add_code("sra", dst_reg, src1_reg, "31"); // 符号位
-                            add_code("sub", quotient_reg, quotient_reg, dst_reg); // the real res of quo
-                            // now div res is in quotient_reg
-                            add_code("mul", dst_reg, quotient_reg, divisor_reg);
-                            add_code("sub", dst_reg, src1_reg, dst_reg);
+                            add_code("sra", sign_reg, src1_reg, "31"); // 符号位
+                            add_code("sub", quotient_reg, quotient_reg, sign_reg); // the real res of quo
+                            // now div res is in divisor
+                            add_code("mul", divisor_reg, quotient_reg, divisor_reg);
+                            add_code("sub", dst_reg, src1_reg, divisor_reg);
                         }
-                    } else {
+                    }
+                        // can't be optimized
+                    else {
                         std::string divisor_reg = "$a0";
                         add_code("add", divisor_reg, "$0", divisor);
                         add_code("div", src1_reg, divisor_reg);
@@ -777,129 +736,7 @@ void MipsGenerator::translate() {
             }
 
         }
-            // And OR NOT
-        else if (is_bitwise(op)) {
-            std::string dst_reg = get_reg_require_load_from_memo(dst);
-            std::string src1_reg, src2_reg;
-            std::string bool_reg1 = "$a0";
-            std::string bool_reg2 = "$a1";
-            // AND
-            if (op == IntermOp::AND) {
-                if (is_integer(src1) && is_integer(src2)) {
-                    int res = std::stoi(src1) && std::stoi(src2);
-                    add_code("add", dst_reg, "$0", res);
-                } else if (is_integer(src1)) {
-                    if (std::stoi(src1) == 0) {
-                        add_code("add", dst_reg, "$0", 0);
-                    } else {
-                        src2_reg = get_reg_require_load_from_memo(src2);
-                        add_code("sne", dst_reg, "$0", src2_reg);
-                        if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
-                    }
-                } else if (is_integer(src2)) {
-                    if (std::stoi(src2) == 0) {
-                        add_code("add", dst_reg, "$0", 0);
-                    } else {
-                        src1_reg = get_reg_require_load_from_memo(src1);
-                        add_code("sne", dst_reg, "$0", src1_reg);
-                        if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
-                    }
-                } else {
-                    src1_reg = get_reg_require_load_from_memo(src1);
-                    src2_reg = get_reg_require_load_from_memo(src2);
-                    add_code("sne", bool_reg1, "$0", src1_reg);
-                    add_code("sne", bool_reg2, "$0", src2_reg);
-                    add_code("and", dst_reg, bool_reg1, bool_reg2);
-                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
-                    if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
-                }
 
-            }
-                // OR
-            else if (op == IntermOp::OR) {
-                if (is_integer(src1) && is_integer(src2)) {
-                    int res = (std::stoi(src1) || std::stoi(src2));
-                    add_code("add", dst_reg, "$0", res);
-                } else if (is_integer(src1)) {
-                    if (std::stoi(src1) != 0) { // || a none-zero value, must be true -- 1
-                        add_code("add", dst_reg, "$0", 1);
-                    } else {
-                        src2_reg = get_reg_require_load_from_memo(src2);
-                        add_code("sne", dst_reg, "$0", src2_reg);
-                        if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
-                    }
-                } else if (is_integer(src2)) {
-                    if (std::stoi(src2) != 0) {
-                        add_code("add", dst_reg, "$0", 1);
-                    } else {
-                        src1_reg = get_reg_require_load_from_memo(src1);
-                        add_code("sne", dst_reg, "$0", src1_reg);
-                        if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
-                    }
-                } else {
-                    src1_reg = get_reg_require_load_from_memo(src1);
-                    src2_reg = get_reg_require_load_from_memo(src2);
-                    add_code("sne", bool_reg1, "$0", src1_reg);
-                    add_code("sne", bool_reg2, "$0", src2_reg);
-                    add_code("or", dst_reg, bool_reg1, bool_reg2);
-                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
-                    if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
-                }
-            }
-                // NOT
-            else {
-                if (is_integer(src1)) {
-                    int res = !std::stoi(src1);
-                    add_code("add", dst_reg, "$0", res);
-                } else {
-                    src1_reg = get_reg_require_load_from_memo(src1);
-                    add_code("sne", "$a0", "$0", src1_reg); // $a0: != 0?
-                    add_code("add", "$a1", "$0", 1); // $a0: != 0?
-                    add_code("sub", dst_reg, "$a1", "$a0");
-                    if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
-                }
-            }
-        }
-            // ==, !=, <, <=, >, >=
-        else if (is_cmp(op)) {
-            std::string dst_reg = get_reg_require_load_from_memo(dst);
-            std::string src1_reg, src2_reg;
-            std::string instr = interm_op_to_instr.find(op)->second;
-            if (is_integer(src1) && is_integer(src2)) {
-                int res = 0;
-                if (op == IntermOp::EQ) res = (std::stoi(src1) == std::stoi(src2));
-                else if (op == IntermOp::NEQ) res = (std::stoi(src1) != std::stoi(src2));
-                else if (op == IntermOp::LSS) res = (std::stoi(src1) < std::stoi(src2));
-                else if (op == IntermOp::LEQ) res = (std::stoi(src1) <= std::stoi(src2));
-                else if (op == IntermOp::GRE) res = (std::stoi(src1) > std::stoi(src2));
-                else res = (std::stoi(src1) >= std::stoi(src2));
-                add_code("add", dst_reg, "$0", res);
-            } else if (is_integer(src1)) {
-                src2_reg = get_reg_require_load_from_memo(src2);
-
-                // slt dst 5 src2 -> sgt dst src2 5
-                if (instr == "slt") { // <
-                    instr = "sgt";
-                } else if (instr == "sle") { // <=
-                    instr = "sge";
-                } else if (instr == "sgt") { // >
-                    instr = "slti";
-                } else if (instr == "sge") { // >=
-                    instr = "sle";
-                } else {}
-                add_code(instr, dst_reg, src2_reg, src1);
-            } else if (is_integer(src2)) {
-                if (instr == "slt") instr = "slti";
-                src1_reg = get_reg_require_load_from_memo(src1);
-                add_code(instr, dst_reg, src1_reg, src2);
-            } else {
-                src1_reg = get_reg_require_load_from_memo(src1);
-                src2_reg = get_reg_require_load_from_memo(src2);
-                add_code(instr, dst_reg, src1_reg, src2_reg);
-            }
-            if (src1 != dst && src1[0] == '#' && !will_be_used_later(src1, i)) remove_from_reg(src1_reg);
-            if (src2 != dst && src2[0] == '#' && !will_be_used_later(src2, i)) remove_from_reg(src2_reg);
-        }
             // INIT ARR PTR
         else if (op == IntermOp::INIT_ARR_PTR) {
             // todo: ptr value do not need to load from stack
@@ -969,12 +806,204 @@ void MipsGenerator::translate() {
             // todo: check if src2 can be release
             // if (src2[0] == '#') remove_from_reg(src2_reg);
         }
+            // undefined instruction
+        else {
+            add_error("undefined instruction");
+        }
+    }
+}
+
+// @brief: translate the function of the program
+// @pre: the first statement is "PREPARE_CALL"
+void MipsGenerator::translate_func() {
+    bool init_main = false;
+    int i = 0;
+    for (; i < interm_codes_.size(); i++) {
+        IntermCode &i_code = interm_codes_[i];
+        if (i_code.op != IntermOp::FUNC_BEGIN) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    // now i is pointed to FUNC_BEGIN
+    // save global variables to memo
+    remove_s_regs_save_to_memo();
+    // now let's begin translate
+    for (; i < interm_codes_.size(); i++) {
+        IntermCode &i_code = interm_codes_[i];
+        add_code("");
+        add_code("# " + interm_code_to_string(i_code, false));
+        IntermOp op = i_code.op;
+        std::string dst = i_code.dst, src1 = i_code.src1, src2 = i_code.src2;
+
+        // FUNC_BEGIN
+        if (op == IntermOp::FUNC_BEGIN) {
+            if (!init_main) { // save a stack for main function
+                add_code("addi $sp, $sp, -" + std::to_string(symbol_table_.GetFuncStackSize("main")));
+                add_code("j main");
+                init_main = true;
+            }
+            cur_func_name_ = dst;
+            add_code(dst + " :");
+            // if params in the reg_pairs and has a reg assign, init them
+            std::vector<std::string> params = symbol_table_.GetFuncParams(dst);
+            for (std::string param_name: params) {
+                std::pair<bool, int> search_reg_res = search_symbol_reg(param_name);
+                if (search_reg_res.first && search_reg_res.second != -1) {
+                    // store to memo
+                    int reg_id = search_reg_res.second;
+                    std::pair<int, std::string> addr = get_memo_addr(param_name);
+                    add_code("lw", reg_pool_[reg_id], addr.first, addr.second);
+                } else {
+                    // pass
+                }
+            }
+        }
+            // RET
+        else if (op == IntermOp::RET) {
+            if (!dst.empty()) {
+                if (is_integer(dst)) {
+                    add_code("add", "$v0", "$0", dst);
+                } else {
+                    std::pair<int, std::string> addr_res = get_running_addr(dst);
+                    if (addr_res.first != -1) {
+                        add_code("lw", "$v0", addr_res.first, addr_res.second);
+                    } else {
+                        add_code("move", "$v0", addr_res.second);
+                    }
+                }
+
+            }
+            if (cur_func_name_ == "main") {
+                add_code("li $v0, 10");
+                add_code("syscall");
+            } else {
+                add_code("jr $ra");
+            }
+        }
+            // FUNC_END
+        else if (op == IntermOp::FUNC_END) {
+            if (cur_func_name_ != "main") {
+                add_code("jr $ra");
+            }
+        }
+            // PREPARE_CALL
+        else if (op == IntermOp::PREPARE_CALL) {
+            // $sp minus (context and func size), it's denoted "frame size"
+            // then save the context: ra, sp, s_res, t_res
+            callee_name_stack_.push_back(cur_callee_name_);
+            cur_callee_name_ = dst;
+            int func_stack_size = symbol_table_.GetFuncStackSize(dst);
+            int frame_size = context_size + func_stack_size;
+            frame_size_stack_.push_back(frame_size);
+            add_code("sub $sp, $sp, " + std::to_string(frame_size));
+        }
+            // PUSH_ARR
+        else if (op == IntermOp::PUSH_ARR) {
+            // e.g. PUSH_ARR @Tmp_12 4
+            // MIPS:
+            //     add $a0 $sp|$gp off
+            //     sw $a0 param_off($sp)
+            int param_off = std::stoi(src1) * 4;
+            std::pair<int, std::string> addr = get_running_addr(dst);
+            // the dst in reg
+            if (addr.first == -1) {
+                add_code("sw", addr.second, param_off, "$sp");
+            }
+                // the dst in memo, put to $a0
+            else {
+                std::string tmp_val_reg = "$a0";
+                add_code("lw", tmp_val_reg, addr.first, addr.second);
+                add_code("sw", tmp_val_reg, param_off, "$sp");
+            }
+        }
+            // PUSH_VAL
+        else if (op == IntermOp::PUSH_VAL) {
+            // number or symbol? reg or memory? global or local?
+            int param_off = std::stoi(src1) * 4;
+            if (is_integer(dst)) {
+                // PUSH_VAL 1 1
+                //      add $a0 1 $0
+                //      sw $a0 param_off($sp)
+                add_code("add", "$a0", "$zero", dst);
+                add_code("sw", "$a0", param_off, "$sp");
+            }
+                // VAL is symbol
+            else {
+                std::pair<int, std::string> addr = get_running_addr(dst);
+                // the dst in reg
+                if (addr.first == -1) {
+                    add_code("sw", addr.second, param_off, "$sp");
+                }
+                    // the dst in memo, put to $a0
+                else {
+                    std::string tmp_val_reg = "$a0";
+                    add_code("lw", tmp_val_reg, addr.first, addr.second);
+                    add_code("sw", tmp_val_reg, param_off, "$sp");
+                }
+            }
+        }
+            // CALL FOO
+        else if (op == IntermOp::CALL) {
+            // global symbols not in regs, so we don't care
+            // we don't save sp into the context, we use the frame_size to remember how much to return
+            int func_stack_size = symbol_table_.GetFuncStackSize(dst);
+            add_code("sw $ra, " + std::to_string(ra_off + func_stack_size) + "($sp)");
+            std::vector<int> saved_s_reg_no = {};
+            std::vector<int> saved_t_reg_no = {};
+            // save the symbols in reg_pool to memo
+            std::pair<bool, int> search_res = search_func_block_by_name(cur_func_name_);
+            if (!search_res.first) add_error("func block not found in CALL");
+            FuncBlock &func_block = func_blocks_[search_res.second];
+            std::vector<int> used_regs = func_block.GetUsedRegs();
+
+            // todo: track symbols that being used by the reg pool
+            for (int i = 0; i < used_regs.size(); i++) {
+                std::string reg_name = reg_pool_[used_regs[i]];
+                if (reg_name[1] == 's') {
+                    int s_id = reg_name[2] - '0';
+                    add_code("sw", reg_name, func_stack_size + s_regs_off + 4 * s_id, "$sp");
+                } else { // 't' reg
+                    int t_id = reg_name[2] - '0';
+                    add_code("sw", reg_name, func_stack_size + t_regs_off + 4 * t_id, "$sp");
+                }
+            }
+
+            add_code("jal " + dst);
+            add_code("lw", "$ra", ra_off + func_stack_size, "$sp");
+
+
+            for (int i = 0; i < used_regs.size(); i++) {
+                std::string reg_name = reg_pool_[used_regs[i]];
+                if (reg_name[1] == 's') {
+                    int s_id = reg_name[2] - '0';
+                    add_code("lw", reg_name, func_stack_size + s_regs_off + 4 * s_id, "$sp");
+                } else { // 't' reg
+                    int t_id = reg_name[2] - '0';
+                    add_code("lw", reg_name, func_stack_size + t_regs_off + 4 * t_id, "$sp");
+                }
+            }
+
+            add_code("add", "$sp", "$sp", *(frame_size_stack_.end() - 1));
+            frame_size_stack_.pop_back();
+            if (!callee_name_stack_.empty()) {
+                cur_callee_name_ = callee_name_stack_.back();
+                callee_name_stack_.pop_back();
+            }
+        }
             // GETINT
         else if (op == IntermOp::GETINT) {
             add_code("li $v0, 5");
             add_code("syscall");
-            std::string dst_reg = get_reg_require_load_from_memo(dst);
-            add_code("move", dst_reg, "$v0");
+            std::pair<int, std::string> addr = get_running_addr(dst);
+            if (addr.first == -1) {
+                add_code("move", addr.second, "$v0");
+            } else {
+                std::string val_reg = "$a0";
+                add_code("move", val_reg, "$v0");
+                add_code("sw", val_reg, addr.first, addr.second);
+            }
         }
             // PRINT
         else if (op == IntermOp::PRINT) {
@@ -983,70 +1012,508 @@ void MipsGenerator::translate() {
                 add_code("la", "$a0", "str_" + std::to_string(idx));
                 add_code("li $v0, 4");
             } else {
-                save_symbol_to_the_reg(dst, "$a0");
+                std::string val_reg = "$a0";
+                if (is_integer(dst)) {
+                    add_code("li", val_reg, dst);
+                } else {
+                    std::pair<int, std::string> addr = get_running_addr(dst);
+                    if (addr.first == -1) {
+                        add_code("move", val_reg, addr.second);
+                    } else {
+                        add_code("lw", val_reg, addr.first, addr.second);
+                    }
+                }
                 add_code("li $v0, 1");
             }
             add_code("syscall");
         }
             // LABEL
         else if (op == IntermOp::LABEL) {
-            // 清空寄存器
-            remove_s_regs_save_to_memo();
-            remove_t_regs_save_to_memo();
             add_code(dst + ":");
         }
             // Jump
         else if (op == IntermOp::JUMP) {
-            remove_s_regs_save_to_memo();
-            remove_t_regs_save_to_memo();
             add_code("j " + dst);
         }
             // BEQ
             // @pre: the src2 must be 0
         else if (op == IntermOp::BEQ) {
+            if (!(src2 == "0")) add_error("BEQ src2 is not 0");
+
             if (is_integer(src1) && is_integer(src2)) {
                 if (std::stoi(src1) == std::stoi(src2)) {
-                    remove_s_regs_save_to_memo();
-                    remove_t_regs_save_to_memo();
                     add_code("j " + dst);
                 } else {
                     add_code("# two src not equal, ignore jump");
                 }
-            } else if (src2 == "0") {
-                std::string src1_reg = get_reg_require_load_from_memo(src1);
-                remove_s_regs_save_to_memo();
-                remove_t_regs_save_to_memo();
-                add_code("beq", src1_reg, "$0", dst);
             } else {
-                add_error("BEQ src2 is not 0");
+                std::pair<int, std::string> addr = get_running_addr(src1);
+                if (addr.first == -1) {
+                    add_code("beq", addr.second, "$0", dst);
+                } else {
+                    // load to $a0
+                    add_code("lw", "$a0", addr.first, addr.second);
+                    add_code("beq", "$a0", "$0", dst);
+                }
+
+
             }
         }
             // BNE
         else if (op == IntermOp::BNE) {
+            if (!(src2 == "0")) add_error("BNE src2 is not 0");
             if (is_integer(src1) && is_integer(src2)) {
                 if (std::stoi(src1) != std::stoi(src2)) {
-                    remove_s_regs_save_to_memo();
-                    remove_t_regs_save_to_memo();
                     add_code("j " + dst);
                 } else {
-                    add_code("# two src equal, ignore branch");
+                    add_code("# two src equal, ignore jump");
                 }
-            } else if (src2 == "0") {
-                std::string src1_reg = get_reg_require_load_from_memo(src1);
-                remove_s_regs_save_to_memo();
-                remove_t_regs_save_to_memo();
-                add_code("bne", src1_reg, "$0", dst);
             } else {
-                add_error("BEQ src2 is not 0");
+                std::pair<int, std::string> addr = get_running_addr(src1);
+                if (addr.first == -1) {
+                    add_code("bne", addr.second, "$0", dst);
+                } else {
+                    // load to $a0
+                    add_code("lw", "$a0", addr.first, addr.second);
+                    add_code("bne", "$a0", "$0", dst);
+                }
             }
         }
-            // undefined instruction
-        else {
-            add_error("undefined instruction");
+            // add sub mul div
+        else if (is_arith(op)) {
+            // add dst src1 src2
+            // assign reg for dst
+            std::pair<int, std::string> dst_addr = get_running_addr(dst);
+            std::string dst_reg, src1_reg, src2_reg;
+
+            if ((op == IntermOp::MUL || op == IntermOp::ADD) &&
+                is_integer(src1) && !is_integer(src2)) {
+                std::string temp = src2;
+                src2 = src1;
+                src1 = temp;
+            }
+            // ADD
+            if (op == IntermOp::ADD) {
+                if (is_integer(src1) && is_integer(src2)) {
+                    int res = std::stoi(src1) + std::stoi(src2);
+                    dst_reg = get_reg_without_fail_load(dst, "$a0");
+                    add_code("add", dst_reg, "$0", res);
+                } else if (is_integer(src2)) {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    if (src1 == dst) {
+                        dst_reg = src1_reg;
+                    } else {
+                        dst_reg = get_reg_without_fail_load(dst, "$a1");
+                    }
+                    add_code("add", dst_reg, src1_reg, src2);
+                } else {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    if (src2 == src1) {
+                        src2_reg = src1_reg;
+                    } else {
+                        src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    }
+                    if (src1 == dst) {
+                        dst_reg = src1_reg;
+                    } else if (src2 == dst) {
+                        dst_reg = src2_reg;
+                    } else {
+                        dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    }
+                    add_code("add", dst_reg, src1_reg, src2_reg);
+                }
+                if (dst_reg[1] == 'a') {
+                    add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+                }
+            }
+                // SUB
+            else if (op == IntermOp::SUB) {
+                if (is_integer(src1) && is_integer(src2)) {
+                    int res = std::stoi(src1) - std::stoi(src2);
+                    dst_reg = get_reg_without_fail_load(dst, "$a0");
+                    add_code("add", dst_reg, "$zero", res);
+                } else if (is_integer(src1)) {
+                    // SUB dst, 5, src2
+                    // add $a0, $zero, src1
+                    // sub dst $a0 src2
+                    add_code("add", "$a0", "$zero", src1);
+                    src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    add_code("sub", dst_reg, "$a0", src2_reg);
+                } else if (is_integer(src2)) {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    if (src1 == dst) {
+                        dst_reg = src1_reg;
+                    } else {
+                        dst_reg = get_reg_without_fail_load(dst, "$a1");
+                    }
+                    add_code("sub", dst_reg, src1_reg, src2);
+                } else {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    if (src2 == src1) {
+                        src2_reg = src1_reg;
+                    } else {
+                        src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    }
+                    if (dst == src1) {
+                        dst_reg = src1_reg;
+                    } else if (dst == src2) {
+                        dst_reg = src2_reg;
+                    } else {
+                        dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    }
+                    add_code("sub", dst_reg, src1_reg, src2_reg);
+                }
+                if (dst_reg[1] == 'a') {
+                    add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+                }
+            }
+                // MUL
+            else if (op == IntermOp::MUL) {
+                if (is_integer(src1) && is_integer(src2)) {
+                    int res = std::stoi(src1) * std::stoi(src2);
+                    dst_reg = get_reg_without_fail_load(dst, "$a0");
+                    add_code("add", dst_reg, "$zero", res);
+                } else if (is_integer(src2)) {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    if (src1 == dst) {
+                        dst_reg = src1_reg;
+                    } else {
+                        dst_reg = get_reg_without_fail_load(dst, "$a1");
+                    }
+                    add_code("mul", dst_reg, src1_reg, src2);
+                } else {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    if (src1 == src2) {
+                        src2_reg = src1_reg;
+                    } else {
+                        src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    }
+
+                    if (dst == src1) {
+                        dst_reg = src1_reg;
+                    } else if (dst == src2) {
+                        dst_reg = src2_reg;
+                    } else {
+                        dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    }
+                    add_code("mul", dst_reg, src1_reg, src2_reg);
+                }
+                if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+            }
+                // DIV
+            else if (op == IntermOp::DIV) {
+                if (is_integer(src1) && is_integer(src2)) {
+                    int res = std::stoi(src1) / std::stoi(src2);
+                    dst_reg = get_reg_without_fail_load(dst, "$a0");
+                    add_code("add", dst_reg, "$zero", res);
+                } else if (is_integer(src1)) {
+                    // dst = num / symbol
+                    // add $a1 $zero src1
+                    // div dst_reg, $a1, src2_reg
+                    add_code("add", "$a0", "$0", src1);
+                    src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    add_code("div", "$a0", src2_reg);
+                    add_code("mflo", dst_reg, "", "");
+                } else if (is_integer(src2)) {
+                    // MIPS won't judge src2 equals 0 or not, so it won't generate the label
+                    // div a b 3
+                    // div res, divend, divisor
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    dst_reg = get_reg_without_fail_load(dst, "$a1");
+                    int divisor = std::stoi(src2);
+                    // 只允许使用a2 和 a3
+                    if (can_be_div_opt(divisor)) {
+                        if (is_2_pow(divisor)) {
+                            int k = get_2_pow(divisor);
+                            std::string label = "correct_shiftend_" + std::to_string(div_opt_times++);
+                            add_code("add", dst_reg, src1_reg, "$0"); // if divend > 0, we use this
+                            add_code("bgtz", src1_reg, label);
+                            add_code("add", dst_reg, src1_reg, divisor-1);
+                            add_code(label + ":");
+                            add_code("sra", dst_reg, dst_reg, k);
+                        } else {
+                            unsigned int multer, shifter;
+                            std::pair<unsigned int, unsigned int> mult_shft = get_multer_and_shifter(std::stoi(src2));
+                            multer = mult_shft.first;
+                            shifter = mult_shft.second;
+                            std::string val_reg = "$a2"; // temp result
+                            std::string multer_reg = "$a3";
+                            // a3 = multer
+                            // HI, LO = src1 * a3
+                            // a2 = HI
+                            // a2 >> shifter
+                            // dst = src1 >> 31
+                            // dst = a2 - dst
+                            add_code("li", multer_reg, std::to_string(multer));
+                            add_code("mult", src1_reg, multer_reg); // multer 乘上被除数
+                            add_code("mfhi", val_reg, "", ""); // 取高位放到临时结果
+                            if (shifter != 0)
+                                add_code("sra", val_reg, val_reg, std::to_string(shifter)); // 完成右移，离真正差符号位
+
+                            add_code("sra", dst_reg, src1_reg, "31"); // 求出符号位
+                            add_code("sub", dst_reg, val_reg, dst_reg);
+                        }
+                    } else {
+                        add_code("div", dst_reg, src1_reg, src2);
+                    }
+                } else {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    add_code("div", src1_reg, src2_reg);
+                    add_code("mflo", dst_reg, "", "");
+                }
+                if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+            }
+                // MOD
+            else {
+                if (is_integer(src1) && is_integer(src2)) {
+                    int res = std::stoi(src1) % std::stoi(src2);
+                    dst_reg = get_reg_without_fail_load(dst, "$a0");
+                    add_code("add", dst_reg, "$zero", res);
+                } else if (is_integer(src1)) {
+                    add_code("add", "$a0", "$zero", src1);
+                    src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    add_code("div", "$a0", src2_reg);
+                    add_code("mfhi " + dst_reg);
+                }
+                    // MOD a b 3
+                else if (is_integer(src2)) {
+                    std::string src1_back_reg = "$a0", dst_back_reg = "$a1";
+                    src1_reg = get_reg_with_fail_load(src1, src1_back_reg);
+                    dst_reg = get_reg_without_fail_load(dst, dst_back_reg);
+                    int divisor = std::stoi(src2);
+                    if (can_be_div_opt(divisor)) {
+                        // 2 power
+                        if (is_2_pow(divisor)) {
+                            int k = get_2_pow(divisor);
+                            std::string src1_copy = "$a2";
+                            // a2做符号位，防止 dst_reg == src1_reg
+                            // a2 = src1, copy src1
+                            // dst = src1
+                            // if a2 < 0, dst = -src1
+                            // dst = dst & (divisor -1)
+                            // if a2 < 0, dst = -dst
+                            add_code("add", src1_copy, src1_reg, "$0");
+                            add_code("add", dst_reg, src1_reg, "$0");
+                            std::string div_ves_label = "div_opt_label_" + std::to_string(div_opt_times++);
+                            add_code("bgtz", src1_reg, div_ves_label);
+                            add_code("sub", dst_reg, "$0", src1_reg);
+                            add_code(div_ves_label + ":");
+                            //  now we can &
+                            add_code("andi", dst_reg, dst_reg, divisor - 1);
+                            std::string res_ves_label = "div_opt_label_" + std::to_string(div_opt_times++);
+                            add_code("bgtz", src1_copy, res_ves_label);
+                            add_code("sub", dst_reg, "$0", dst_reg);
+                            add_code(res_ves_label + ":");
+                        }
+                            // not 2 power
+                        else {
+                            // 小心dst 和 src1 被分配到相同的寄存器
+                            std::string divisor_reg = "$a2";
+                            std::string multer_reg = "$a3";
+                            std::string quotient_reg = "$a3";
+                            std::string sign_reg = "$a2";
+                            unsigned int multer, shifter;
+                            std::pair<unsigned int, unsigned int> mul_shft = get_multer_and_shifter(divisor);
+                            multer = mul_shft.first;
+                            shifter = mul_shft.second;
+
+                            // a3 = multer
+                            // HI, LO = src1 * a3
+                            // a3 = HI
+                            // sra a3, a3, shifter
+                            // a2 = sign(src1)
+                            // a3 = a3 - a2
+                            // # now, src1 and dst never change, divisor reg(a0) is useless
+                            // a2 = divisor
+                            // mul $a2, $a3, a2
+                            // sub a,b , $a2
+                            add_code("add", multer_reg, "$0", std::to_string(multer));
+                            add_code("mult", src1_reg, multer_reg);
+                            add_code("mfhi " + quotient_reg);
+                            if (shifter != 0) {
+                                add_code("sra", quotient_reg, quotient_reg,
+                                         std::to_string(shifter)); // the real quotient
+                            }
+
+                            add_code("sra", sign_reg, src1_reg, "31"); // 符号位
+                            add_code("sub", quotient_reg, quotient_reg, sign_reg); // the real res of quo
+                            // now div res is in divisor
+                            add_code("add", divisor_reg, "$0", std::to_string(divisor));
+                            add_code("mul", divisor_reg, quotient_reg, divisor_reg);
+                            add_code("sub", dst_reg, src1_reg, divisor_reg);
+                        }
+                    } else {
+                        std::string divisor_reg = "$a2";
+                        add_code("add", divisor_reg, "$0", divisor);
+                        add_code("div", src1_reg, divisor_reg);
+                        add_code("mfhi " + dst_reg);
+                    }
+                }
+                    // MOD a b c
+                else {
+                    src1_reg = get_reg_with_fail_load(src1, "$a0");
+                    src2_reg = get_reg_with_fail_load(src2, "$a1");
+                    dst_reg = get_reg_without_fail_load(dst, "$a2");
+                    add_code("div", src1_reg, src2_reg);
+                    add_code("mfhi " + dst_reg);
+                }
+                if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+            }
+        }
+            // ==, !=, <, <=, >, >=
+        else if (is_cmp(op)) {
+            std::string dst_reg, src1_reg, src2_reg;
+            std::string src1_back_reg = "$a0", src2_back_reg = "$a1", dst_back_reg = "$a2";
+            std::string instr = interm_op_to_instr.find(op)->second;
+            std::pair<int, std::string> dst_addr = get_running_addr(dst);
+            if (is_integer(src1) && is_integer(src2)) {
+                int res = 0;
+                if (op == IntermOp::EQ) res = (std::stoi(src1) == std::stoi(src2));
+                else if (op == IntermOp::NEQ) res = (std::stoi(src1) != std::stoi(src2));
+                else if (op == IntermOp::LSS) res = (std::stoi(src1) < std::stoi(src2));
+                else if (op == IntermOp::LEQ) res = (std::stoi(src1) <= std::stoi(src2));
+                else if (op == IntermOp::GRE) res = (std::stoi(src1) > std::stoi(src2));
+                else res = (std::stoi(src1) >= std::stoi(src2));
+                dst_reg = get_reg_without_fail_load(dst, dst_back_reg);
+                add_code("add", dst_reg, "$0", res);
+            } else if (is_integer(src1)) {
+                src2_reg = get_reg_with_fail_load(src2, src2_back_reg);
+                dst_reg = get_reg_without_fail_load(dst, dst_back_reg);
+                // slt dst 5 src2 -> sgt dst src2 5
+                if (instr == "slt") { // <
+                    instr = "sgt";
+                } else if (instr == "sle") { // <=
+                    instr = "sge";
+                } else if (instr == "sgt") { // >
+                    instr = "slti";
+                } else if (instr == "sge") { // >=
+                    instr = "sle";
+                } else {}
+                add_code(instr, dst_reg, src2_reg, src1);
+            } else if (is_integer(src2)) {
+                if (instr == "slt") instr = "slti";
+                src1_reg = get_reg_with_fail_load(src1, src1_back_reg);
+                dst_reg = get_reg_without_fail_load(dst, dst_back_reg);
+                add_code(instr, dst_reg, src1_reg, src2);
+            } else {
+                src1_reg = get_reg_with_fail_load(src1, src1_back_reg);
+                src2_reg = get_reg_with_fail_load(src2, src2_back_reg);
+                dst_reg = get_reg_without_fail_load(dst, dst_back_reg);
+                add_code(instr, dst_reg, src1_reg, src2_reg);
+            }
+            if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+        } else if (op == IntermOp::INIT_ARR_PTR) {
+            std::pair<int, std::string> dst_addr = get_running_addr(dst);
+            std::string dst_reg = get_reg_without_fail_load(dst, "$a0");
+            std::pair<int, std::string> ptr_addr = get_memo_addr(dst);
+            int arr_offset = ptr_addr.first + 4;
+            add_code("add", dst_reg, ptr_addr.second, arr_offset);
+            if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+        }
+            // ARR_LOAD, fetch a value from array, assign the value to a variable
+            // ARR_LOAD var_1 arr_name idx
+        else if (op == IntermOp::ARR_LOAD) {
+            std::pair<int, std::string> dst_addr = get_running_addr(dst);
+            std::string arr_addr_reg = get_reg_with_fail_load(src1, "$a0");
+            std::string dst_reg = get_reg_without_fail_load(dst, "$a2");
+            if (is_integer(src2)) {
+                // ARR_LOAD #tmp arr_name 5
+                int element_off = 4 * std::stoi(src2);
+                add_code("lw", dst_reg, element_off, arr_addr_reg);
+            } else {
+                // ARR_LOAD #tmp arr_name #tmp15
+                std::string idx_reg = get_reg_with_fail_load(src2, "$a1");
+                add_code("sll", "$a2", idx_reg, 2); // the index offset in $a2 now
+                add_code("add", "$a2", "$a2", arr_addr_reg); // the offset to pointer in $a2 now
+                add_code("lw", dst_reg, 0, "$a2");
+            }
+            if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+        }
+            // ARR_SAVE, save a value into memory
+            // ARR_SAVE arr_name, index, value
+        else if (op == IntermOp::ARR_SAVE) {
+            // scr1 is index, src2 is value
+            // index use $a0, value use $a1
+            std::string off_reg = "$a0";
+            std::string val_reg = "$a1";
+            std::string dst_back_reg = "$a2";
+            std::string src2_back_reg = "$a3", src1_back_reg = "$a0";
+
+            std::string src1_reg, src2_reg;
+            std::pair<int, std::string> arr_addr = get_memo_addr(dst);
+            std::string arr_addr_reg = get_reg_with_fail_load(dst, dst_back_reg);
+            // ARR_SAVE arr_1 1 10
+            if (is_integer(src1) && is_integer(src2)) {
+                add_code("add", val_reg, "$0", src2);
+                int element_off = 4 * std::stoi(src1);
+                add_code("sw", val_reg, element_off, arr_addr_reg);
+            } else if (is_integer(src1)) {
+                // index/src1 is integer, val/src2 is a symbol
+                src2_reg = get_reg_with_fail_load(src2, src2_back_reg);
+                int element_off = 4 * std::stoi(src1);
+                add_code("sw", src2_reg, element_off, arr_addr_reg);
+            } else if (is_integer(src2)) {
+                // index/src1 is symbol, value is integer
+                src1_reg = get_reg_with_fail_load(src1, off_reg); // index in reg_pool or a0
+                add_code("add", off_reg, "$zero", src1_reg); // $a0 = src1/index
+                add_code("sll", off_reg, off_reg, 2); // $a0 *= 4
+                add_code("add", off_reg, off_reg, arr_addr_reg); // $a0 += arr_addr_reg
+                add_code("add", val_reg, "$zero", src2);
+                add_code("sw", val_reg, 0, off_reg);
+            } else {
+                src1_reg = get_reg_with_fail_load(src1, src1_back_reg); // index
+                if (src2 == src1) {
+                    src2_reg = src1_reg;
+                } else {
+                    src2_reg = get_reg_with_fail_load(src2, src2_back_reg); // value
+                }
+                add_code("add", off_reg, "$zero", src1_reg); // $a0 = src1
+                add_code("sll", off_reg, off_reg, 2); // $a0 *= 4
+                add_code("add", off_reg, off_reg, arr_addr_reg); // $a0 += arr_addr
+                add_code("sw", src2_reg, 0, off_reg);
+            }
+        }
+            // NOT dst, src1
+            // @pre: src1 is a symbol
+        else if (op == IntermOp::NOT) {
+            std::pair<int, std::string> dst_addr = get_running_addr(dst);
+            std::string src1_reg = get_reg_with_fail_load(src1, "$a0");
+            std::string dst_reg = get_reg_without_fail_load(dst, "$a1");
+            add_code("seq", dst_reg, src1_reg, "0");
+            if (dst_reg[1] == 'a') add_code("sw", dst_reg, dst_addr.first, dst_addr.second);
+        } else {
+            add_error("undefined op");
         }
     }
 }
 
+
+// @brief:
+// @exception: may not find this symbol
+std::pair<bool, int> MipsGenerator::search_symbol_reg(std::string symbol) {
+    std::pair<bool, int> search_res = search_func_block_by_name(cur_func_name_);
+    if (!search_res.first) add_error("func " + cur_func_name_ + " not found in search_symbol_reg()");
+    FuncBlock &func_block = func_blocks_[search_res.second];
+    std::pair<bool, int> search_reg_res = func_block.SearchSymbolReg(symbol);
+    return search_reg_res;
+}
+
+std::pair<bool, int> MipsGenerator::search_func_block_by_name(const std::string &func_name) {
+    for (int i = 0; i < func_blocks_.size(); i++) {
+        auto &func_block = func_blocks_[i];
+        if (func_block.func_name_ == func_name) {
+            return std::make_pair(true, i);
+        } else {
+            continue;
+        }
+    }
+    return std::make_pair(false, -1);
+}
 
 // @brief: check the symbol will be used after interm_codes[i] in the same block,
 //         to check if a temp symbol can be released

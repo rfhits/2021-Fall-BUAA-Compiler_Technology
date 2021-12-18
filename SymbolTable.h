@@ -102,6 +102,8 @@ public:
 
     int get_global_data_size();
 
+    std::vector<std::string> GetFuncParams(std::string func_name);
+
     int GetFuncStackSize(const std::string& func_name);
 
     void add_to_strcons(const std::string& str);
