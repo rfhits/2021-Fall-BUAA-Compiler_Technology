@@ -123,7 +123,7 @@ public:
     // @exception: may not find this symbol
     // @retval: if found
     std::pair<bool, int> SearchSymbolReg(const std::string &symbol) {
-        for (const std::pair<std::string, int>& symbol_reg: symbol_reg_pairs) {
+        for (const std::pair<std::string, int> &symbol_reg: symbol_reg_pairs) {
             if (symbol_reg.first == symbol) {
                 return std::make_pair(true, symbol_reg.second);
             } else {
@@ -149,8 +149,23 @@ public:
         return std::make_pair(symbol, min_degree);
     }
 
+    // @pre: the copy_graph's size > 1
+    // @brief: get the max degree symbol and its degree from copy_graph
+    std::pair<std::string, int> get_max_deg_symbol() {
+        std::string symbol;
+        int max_degree = -1;
+        auto it = copy_graph.begin();
+        while (it != graph.end()) {
+            if (it->second.size() > max_degree) {
+                max_degree = it->second.size();
+                symbol = it->first;
+            }
+            it++;
+        }
+        return std::make_pair(symbol, max_degree);
+    }
 
-    void remove_from_copy_graph(std::string symbol) {
+    void remove_from_copy_graph(const std::string &symbol) {
         copy_graph.erase(symbol);
         auto it = copy_graph.begin();
         while (it != copy_graph.end()) {
@@ -221,18 +236,22 @@ public:
         // -1: save to memo, never Color
         // -2: waiting for coloring
         while (copy_graph.size() > 1) {
-            std::pair<std::string, int> symbol_degree = get_min_degree_symbol();
+            std::pair<std::string, int> min_sym_deg = get_min_degree_symbol();
             int sign_reg_id = -2;
-            if (symbol_degree.second >= reg_num) {
-                // stay in memory
+            if (min_sym_deg.second >= reg_num) {
+                // choose the max degree, stay in memory
                 sign_reg_id = -1;
+                std::pair<std::string, int> max_sym_deg = get_max_deg_symbol();
+                symbol_reg_pairs.emplace_back(max_sym_deg.first, sign_reg_id);
+                // remove from the copy graph
+                remove_from_copy_graph(max_sym_deg.first);
             } else {
                 // the degree is small, so we can assign
                 sign_reg_id = -2;
+                symbol_reg_pairs.emplace_back(min_sym_deg.first, sign_reg_id);
+                // remove from the copy graph
+                remove_from_copy_graph(min_sym_deg.first);
             }
-            symbol_reg_pairs.emplace_back(symbol_degree.first, sign_reg_id);
-            // remove from the copy graph
-            remove_from_copy_graph(symbol_degree.first);
         }
         if (copy_graph.size() != 1) return; // no symbols
 
@@ -257,7 +276,7 @@ public:
 
     std::vector<int> GetUsedRegs() {
         std::vector<int> used_regs = {};
-        for (const auto& symbol_reg: symbol_reg_pairs) {
+        for (const auto &symbol_reg: symbol_reg_pairs) {
             if (symbol_reg.second != -1) {
                 used_regs.push_back(symbol_reg.second);
             }
@@ -540,7 +559,7 @@ public:
     // @brief: given a local symbol, return its reg no
     std::pair<bool, int> SearchSymbolReg(std::string symbol) {
         std::pair<bool, int> search_res = conflict_graph_.SearchSymbolReg(symbol);
-        return search_res ;
+        return search_res;
     }
 
     std::vector<int> GetUsedRegs() {

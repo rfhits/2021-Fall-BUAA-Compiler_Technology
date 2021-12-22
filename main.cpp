@@ -39,9 +39,7 @@ int main() {
     interm.OutputCodes(interm_out);
 
     interm.Optimize();
-//    interm.OutputCodes(interm_opt_out);
-//    interm.OutputBasicBlocks(interm_opt_out);
-    interm.OutputFuncBlocks(interm_opt_out);
+    interm.OutputCodes(interm_opt_out);
     symbol_table.show_table();
 
     mips_generator.Translate();

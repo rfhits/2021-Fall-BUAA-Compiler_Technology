@@ -539,9 +539,10 @@ void MipsGenerator::Translate() {
                     add_code("add", "$a0", "$zero", src1);
                     add_code("sub", dst_reg, "$a0", src2_reg);
                 } else if (is_integer(src2)) {
+                    int value = std::stoi(src2);
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("sub", dst_reg, src1_reg, src2);
+                    add_code("addi", dst_reg, src1_reg, -value); // faster then sub
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
@@ -558,13 +559,25 @@ void MipsGenerator::Translate() {
                     dst_reg = get_reg_without_load_from_memo(dst);
                     add_code("add", dst_reg, "$zero", res);
                 } else if (is_integer(src1)) {
+                    int value = std::stoi(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("mul", dst_reg, src2_reg, src1);
+                    if (is_2_pow(value)) {
+                        int k = get_2_pow(value);
+                        add_code("sll", dst_reg, src2_reg, k);
+                    } else {
+                        add_code("mul", dst_reg, src2_reg, src1);
+                    }
                 } else if (is_integer(src2)) {
+                    int value = std::stoi(src2);
                     src1_reg = get_reg_require_load_from_memo(src1);
                     dst_reg = get_reg_without_load_from_memo(dst);
-                    add_code("mul", dst_reg, src1_reg, src2);
+                    if (is_2_pow(value)) {
+                        int k = get_2_pow(value);
+                        add_code("sll", dst_reg, src1_reg, k);
+                    } else {
+                        add_code("mul", dst_reg, src1_reg, src2);
+                    }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
                     src2_reg = get_reg_require_load_from_memo(src2);
@@ -629,7 +642,8 @@ void MipsGenerator::Translate() {
                             add_code("sub", dst_reg, val_reg, dst_reg);
                         }
                     } else {
-                        add_code("div", dst_reg, src1_reg, src2);
+                        add_code("div", src1_reg, src2);
+                        add_code("mflo", dst_reg, "", "");
                     }
                 } else {
                     src1_reg = get_reg_require_load_from_memo(src1);
@@ -897,7 +911,7 @@ void MipsGenerator::translate_func() {
             int func_stack_size = symbol_table_.GetFuncStackSize(dst);
             int frame_size = context_size + func_stack_size;
             frame_size_stack_.push_back(frame_size);
-            add_code("sub $sp, $sp, " + std::to_string(frame_size));
+            add_code("addi", "$sp", "$sp",  -frame_size);
         }
             // PUSH_ARR
         else if (op == IntermOp::PUSH_ARR) {
@@ -1141,13 +1155,14 @@ void MipsGenerator::translate_func() {
                     dst_reg = get_reg_without_fail_load(dst, "$a2");
                     add_code("sub", dst_reg, "$a0", src2_reg);
                 } else if (is_integer(src2)) {
+                    int value = std::stoi(src2);
                     src1_reg = get_reg_with_fail_load(src1, "$a0");
                     if (src1 == dst) {
                         dst_reg = src1_reg;
                     } else {
                         dst_reg = get_reg_without_fail_load(dst, "$a1");
                     }
-                    add_code("sub", dst_reg, src1_reg, src2);
+                    add_code("addi", dst_reg, src1_reg, -value);
                 } else {
                     src1_reg = get_reg_with_fail_load(src1, "$a0");
                     if (src2 == src1) {
@@ -1175,13 +1190,20 @@ void MipsGenerator::translate_func() {
                     dst_reg = get_reg_without_fail_load(dst, "$a0");
                     add_code("add", dst_reg, "$zero", res);
                 } else if (is_integer(src2)) {
+                    int value = std::stoi(src2);
                     src1_reg = get_reg_with_fail_load(src1, "$a0");
                     if (src1 == dst) {
                         dst_reg = src1_reg;
                     } else {
                         dst_reg = get_reg_without_fail_load(dst, "$a1");
                     }
-                    add_code("mul", dst_reg, src1_reg, src2);
+
+                    if (is_2_pow(value)) {
+                        int k = get_2_pow(value);
+                        add_code("sll", dst_reg, src1_reg, k);
+                    }  else {
+                        add_code("mul", dst_reg, src1_reg, src2);
+                    }
                 } else {
                     src1_reg = get_reg_with_fail_load(src1, "$a0");
                     if (src1 == src2) {

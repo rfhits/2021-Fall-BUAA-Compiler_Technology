@@ -11,5 +11,7 @@ CMakeLists.txt
 # personal document
 /versions
 *.zip
-设计文档.pdf
-设计文档.md
+*.md
+*.pdf
+*.png
+*.drawio

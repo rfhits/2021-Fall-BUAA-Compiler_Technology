@@ -383,6 +383,27 @@ void Intermediate::Optimize() {
         delete_useless_loop_in_main();
         sync_codes();
     }
+    InlineFunc();
+    for (int i = 0; i < opt_times; ++i) {
+        reset_blocks();
+        peephole_optimize();
+        divide_blocks();
+        construct_flow_rel();
+        add_modified_symbols();
+        add_read_symbols();
+        check_print_getint_memo();
+        common_expr();
+        gen_def_and_use();
+        gen_in_and_out();
+        if (i == 0) {
+            OutputFuncBlocks(bf_dce_out);
+            bf_dce_out.close();
+        }
+        dead_code_elimination();
+        delete_useless_loop_in_main();
+        sync_codes();
+    }
+    peephole_optimize();
     gen_func_conflict_graph();
 }
 
