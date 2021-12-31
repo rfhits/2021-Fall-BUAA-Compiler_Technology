@@ -614,12 +614,13 @@ std::pair<DataType, std::string> Parser::LVal() {
                 if (entry_ptr->symbol_type == SymbolType::CONST) {
                     ret_var_name = std::to_string(entry_ptr->value);
                 } else {
-                    // todo: none-array return alias for generate code,
-                    //       array return name, because it will be use in FuncCall,which will use alias
-//                    ret_var_name = entry_ptr->name;
                     ret_var_name = entry_ptr->alias;
                 }
-            } else if (entry_ptr->dims == 1) {
+            }
+                // none-array variable returns alias for generate code,
+                // array variable returns name, because it will be use in FuncCall, which need the name to do the type check
+                //ret_var_name = entry_ptr->name;
+            else if (entry_ptr->dims == 1) {
                 // the identifier is a 1d array
                 ret_type = DataType::INT_ARR;
                 ret_var_name = entry_ptr->name;
@@ -1112,7 +1113,7 @@ void Parser::FuncDef() {
         if (func_type == DataType::VOID) {
             // has return statement or not does not matter
             // add a return statement for block
-            if (item_types.empty() ||  (item_types.back() != BlockItemType::RETURN_STMT)) {
+            if (item_types.empty() || (item_types.back() != BlockItemType::RETURN_STMT)) {
                 intermediate_.AddMidCode("", IntermOp::RET, "", "");
             }
         } else {
@@ -1736,7 +1737,7 @@ void Parser::WhileStmt() {
 
     next_sym(); // eat '('
     next_sym();
-    int cond_begin = pos_-1;
+    int cond_begin = pos_ - 1;
     std::pair<DataType, std::string> cond_ret = Cond();
     int cond_end = pos_;
     std::vector<Token> vec_cond(read_tokens_.begin() + cond_begin, read_tokens_.begin() + cond_end);
