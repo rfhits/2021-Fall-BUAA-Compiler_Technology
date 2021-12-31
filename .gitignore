@@ -1,5 +1,17 @@
 .idea
+.vscode
 cmake-build-debug
 CMakeLists.txt
 
+# local test files
+/testfiles
+*.asm
+*.txt
+
+# personal document
+/versions
 *.zip
+*.md
+*.pdf
+*.png
+*.drawio

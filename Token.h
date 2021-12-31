@@ -9,9 +9,9 @@
 #include <vector>
 #include <map>
 
-using namespace std;
+//using namespace std;
 
-enum TypeCode {
+enum class TypeCode {
     TYPE_UNDEFINED, TYPE_EOF,
     IDENFR, INTCON, STRCON, MAINTK,CONSTTK,
     INTTK, BREAKTK, CONTINUETK, IFTK,
@@ -24,23 +24,23 @@ enum TypeCode {
     LBRACK, RBRACK,LBRACE, RBRACE
 };
 
-const map<string, TypeCode> reserved_word2type_code = {
-        {"main", MAINTK},
-        {"const", CONSTTK},
-        {"int", INTTK},
-        {"break", BREAKTK},
-        {"continue", CONTINUETK},
-        {"if", IFTK},
-        {"else", ELSETK},
-        {"while", WHILETK},
-        {"getint", GETINTTK},
-        {"printf", PRINTFTK},
-        {"return", RETURNTK},
-        {"void", VOIDTK},
+const std::map<std::string, TypeCode> reserved_word2type_code = {
+        {"main", TypeCode::MAINTK},
+        {"const", TypeCode::CONSTTK},
+        {"int", TypeCode::INTTK},
+        {"break", TypeCode::BREAKTK},
+        {"continue", TypeCode::CONTINUETK},
+        {"if", TypeCode::IFTK},
+        {"else", TypeCode::ELSETK},
+        {"while", TypeCode::WHILETK},
+        {"getint", TypeCode::GETINTTK},
+        {"printf", TypeCode::PRINTFTK},
+        {"return", TypeCode::RETURNTK},
+        {"void", TypeCode::VOIDTK},
 };
 
 
-const map<string, TypeCode> char2type_code = {
+const std::map<std::string, TypeCode> char2type_code = {
         {"+", TypeCode::PLUS},
         {"-", TypeCode::MINU},
         {"*", TypeCode::MULT},
@@ -57,7 +57,7 @@ const map<string, TypeCode> char2type_code = {
 };
 
 
-const map<TypeCode, string> type_code2str = {
+const std::map<TypeCode, std::string> type_code2str = {
         {TypeCode::IDENFR, "IDENFR"},
         {TypeCode::INTCON, "INTCON"},
         {TypeCode::STRCON, "STRCON"},
@@ -100,27 +100,33 @@ const map<TypeCode, string> type_code2str = {
 
 class Token {
 private:
-    TypeCode type_code_ = TYPE_UNDEFINED; //类别码
-    string str_value_; // if token is a string， store value
+    TypeCode type_code_ = TypeCode::TYPE_UNDEFINED; //类别码
+    // if token is a string, store value
+    // identifier: the name
+    std::string str_value_;
     int int_value_ ;
-
     int line_no_; // token appears in this line
 
 public:
 
     Token(TypeCode type_code);
 
-    Token(TypeCode type_code, string str_value, int line_no, int col_no);
+    Token(TypeCode type_code, std::string str_value, int line_no, int col_no);
 
     Token(TypeCode type_code, int int_value, int line_no, int col_no);
 
     TypeCode get_type_code();
-    string get_str_value();
+    std::string get_str_value();
     int get_int_value();
-    string get_type_name();
+    std::string get_type_name();
+    int get_line_no() const {
+        return line_no_;
+    }
+
+    void set_line_no(int line_no);
     void set_type_code(TypeCode type_code);
-    void set_str_value(string& str_value);
-    string to_string();
+    void set_str_value(std::string& str_value);
+    std::string to_string();
 
 };
 
